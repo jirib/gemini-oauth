@@ -114,7 +114,7 @@ const isExpectedDaemonProcess = (state: DaemonState): boolean => {
   if (!command) return false;
   const entryMatches = state.cliEntry
     ? command.includes(state.cliEntry)
-    : command.includes("agy-oauth") || command.includes("/dist/cli.js");
+    : command.includes("gemini-oauth") || command.includes("/dist/cli.js");
   if (
     !entryMatches ||
     !/(?:^|\s)serve(?:\s|$)/.test(command) ||
@@ -175,7 +175,7 @@ export function spawnDetachedServer(opts: {
         }
         continue;
       }
-      throw new Error("Another agy-oauth server start is already in progress");
+      throw new Error("Another gemini-oauth server start is already in progress");
     }
   }
 
@@ -183,7 +183,7 @@ export function spawnDetachedServer(opts: {
     const existing = getRunningDaemon();
     if (existing) {
       throw new Error(
-        `Already running (pid ${existing.pid}) at ${existing.url}. Stop it first: agy-oauth stop`,
+        `Already running (pid ${existing.pid}) at ${existing.url}. Stop it first: gemini-oauth stop`,
       );
     }
 
@@ -205,7 +205,7 @@ export function spawnDetachedServer(opts: {
           stdio: ["ignore", logFd, logFd],
           env: {
             ...process.env,
-            AGY_OAUTH_DAEMON: "1",
+            GEMINI_OAUTH_DAEMON: "1",
           },
         },
       );

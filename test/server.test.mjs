@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { GeminiAuthStore } from "../dist/auth.js";
-import { startAgyOAuthServer } from "../dist/server.js";
+import { startGeminiOAuthServer } from "../dist/server.js";
 
 const makeServer = async (options = {}) => {
-  const directory = await mkdtemp(join(tmpdir(), "agy-oauth-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "gemini-oauth-test-"));
   const auth = new GeminiAuthStore({
     authFilePath: join(directory, "oauth.json"),
     stateFilePath: join(directory, "state.json"),
@@ -34,7 +34,7 @@ const makeServer = async (options = {}) => {
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
-  const server = await startAgyOAuthServer({
+  const server = await startGeminiOAuthServer({
     auth,
     host: "127.0.0.1",
     port: 0,

@@ -87,8 +87,8 @@ export const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_GEMINI_HOME = join(homedir(), ".gemini");
 /** Shared with official Gemini CLI. */
 export const DEFAULT_AUTH_FILE = join(DEFAULT_GEMINI_HOME, "oauth_creds.json");
-/** Local cache for managed project id / email (agy-oauth only). */
-export const DEFAULT_STATE_FILE = join(DEFAULT_GEMINI_HOME, "agy-oauth.json");
+/** Local cache for managed project id / email (gemini-oauth only). */
+export const DEFAULT_STATE_FILE = join(DEFAULT_GEMINI_HOME, "gemini-oauth.json");
 
 export const FREE_TIER_ID = "free-tier";
 export const LEGACY_TIER_ID = "legacy-tier";

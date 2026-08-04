@@ -1,4 +1,4 @@
-# agy-oauth
+# gemini-oauth
 
 **Gemini CLI OAuth → local OpenAI-compatible API**
 
@@ -6,7 +6,7 @@
 
 ```txt
 $ npm run install:global
-$ agy-oauth --detach --port 18080
+$ gemini-oauth --detach --port 18080
 
 Gemini OAuth proxy started in background
   url: http://127.0.0.1:18080/v1
@@ -18,7 +18,7 @@ Gemini OAuth proxy started in background
 
 ## 무엇을 하나요?
 
-| openai-oauth | grok-oauth | **agy-oauth** |
+| openai-oauth | grok-oauth | **gemini-oauth** |
 |---|---|---|
 | ChatGPT / Codex OAuth (`~/.codex`) | Grok CLI OAuth (`~/.grok/auth.json`) | Gemini CLI OAuth (`~/.gemini/oauth_creds.json`) |
 | Upstream: Codex backend | Upstream: `cli-chat-proxy.grok.com` | Upstream: `daily-cloudcode-pa.googleapis.com/v1internal` |
@@ -32,7 +32,7 @@ Gemini CLI가 쓰는 **Code Assist 비공개 API**에 OAuth bearer를 붙여, Op
 ## 사전 요구사항
 
 1. **Node.js 20+**
-2. **Gemini CLI 로그인** (권장) 또는 `agy-oauth login`
+2. **Gemini CLI 로그인** (권장) 또는 `gemini-oauth login`
 
 ```bash
 # 공식 CLI로 이미 로그인되어 있으면 그대로 사용됩니다
@@ -51,8 +51,8 @@ Google 계정 + Gemini CLI / Code Assist 이용 가능 티어가 필요합니다
 ### 소스에서 전역 설치 (권장)
 
 ```bash
-git clone https://github.com/kimws/agy-oauth.git
-cd agy-oauth
+git clone https://github.com/kimws/gemini-oauth.git
+cd gemini-oauth
 npm ci
 npm run install:global
 # 동일: npm run build && npm install -g .
@@ -63,29 +63,29 @@ npm run install:global
 ```bash
 npm ci
 npm pack
-npm install -g ./agy-oauth-0.1.0.tgz
+npm install -g ./gemini-oauth-0.1.0.tgz
 ```
 
 ```bash
 # 백그라운드 서버 (기본 포트 10551)
-agy-oauth --detach
+gemini-oauth --detach
 
 # 포트 지정
-agy-oauth --detach --port 18080
+gemini-oauth --detach --port 18080
 
 # 상태 / 로그 / 중지
-agy-oauth status
-agy-oauth logs --follow
-agy-oauth stop
+gemini-oauth status
+gemini-oauth logs --follow
+gemini-oauth stop
 ```
 
 상태 파일·로그: `~/.gemini/oauth-proxy/` (`state.json`, `server.log`).  
-프로젝트 캐시: `~/.gemini/agy-oauth.json`.
+프로젝트 캐시: `~/.gemini/gemini-oauth.json`.
 
 ### 이 저장소에서 (개발 / foreground)
 
 ```bash
-cd agy-oauth
+cd gemini-oauth
 npm install
 npm run build
 npm start                          # foreground, port 10551
@@ -95,17 +95,17 @@ node dist/cli.js --port 18080
 ### CLI
 
 ```bash
-agy-oauth                 # foreground 프록시 (미로그인 시 login 유도)
-agy-oauth --detach        # 백그라운드 서버
-agy-oauth stop
-agy-oauth status
-agy-oauth logs [--follow]
-agy-oauth login           # 브라우저 OAuth (PKCE)
-agy-oauth login --device  # 헤드리스 (코드 붙여넣기)
-agy-oauth logout          # Gemini CLI 파일만 정리; Antigravity keyring은 별도 관리
-agy-oauth --port 18080
-agy-oauth --project my-gcp-project
-agy-oauth --models gemini-2.5-pro,gemini-2.5-flash
+gemini-oauth                 # foreground 프록시 (미로그인 시 login 유도)
+gemini-oauth --detach        # 백그라운드 서버
+gemini-oauth stop
+gemini-oauth status
+gemini-oauth logs [--follow]
+gemini-oauth login           # 브라우저 OAuth (PKCE)
+gemini-oauth login --device  # 헤드리스 (코드 붙여넣기)
+gemini-oauth logout          # Gemini CLI 파일만 정리; Antigravity keyring은 별도 관리
+gemini-oauth --port 18080
+gemini-oauth --project my-gcp-project
+gemini-oauth --models gemini-2.5-pro,gemini-2.5-flash
 ```
 
 | Flag | Default | 설명 |
@@ -166,7 +166,7 @@ npm install openai
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: "agy-oauth", // 로컬 프록시는 키를 검사하지 않음
+  apiKey: "gemini-oauth", // 로컬 프록시는 키를 검사하지 않음
   baseURL: "http://127.0.0.1:10551/v1",
 });
 
@@ -187,7 +187,7 @@ python -m pip install openai
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="agy-oauth",
+    api_key="gemini-oauth",
     base_url="http://127.0.0.1:10551/v1",
 )
 
@@ -203,13 +203,13 @@ print(r.choices[0].message.content)
 ## 라이브러리로 쓰기
 
 ```ts
-import { GeminiAuthStore, startAgyOAuthServer, GeminiUpstream } from "agy-oauth";
+import { GeminiAuthStore, startGeminiOAuthServer, GeminiUpstream } from "gemini-oauth";
 
 const auth = new GeminiAuthStore(); // ~/.gemini/oauth_creds.json
 const token = await auth.getAccessToken(); // auto-refresh
 const projectId = await auth.ensureProjectId();
 
-const server = await startAgyOAuthServer({ auth, port: 10551 });
+const server = await startGeminiOAuthServer({ auth, port: 10551 });
 console.log(server.url);
 
 // 또는 직접 upstream 호출
@@ -226,12 +226,12 @@ const result = await upstream.chatCompletions({
 
 1. Gemini CLI는 Google OAuth(PKCE)로 로그인하고 access/refresh 토큰을 `~/.gemini/oauth_creds.json`에 저장합니다.
 2. 모델 추론은 공개 Gemini API 키가 아니라 **`https://daily-cloudcode-pa.googleapis.com/v1internal`** (Code Assist private API)를 사용합니다.
-3. `agy-oauth`는 그 토큰을 읽어:
+3. `gemini-oauth`는 그 토큰을 읽어:
    - `Authorization: Bearer …`
    - Antigravity-compatible User-Agent / Client-Metadata
    를 붙이고, OpenAI messages → Gemini `contents` 로 변환한 뒤 `:generateContent` / `:streamGenerateContent` 를 호출합니다.
 4. 응답은 다시 OpenAI `chat.completion` (또는 간단 `response`) 형식으로 변환합니다.
-5. 프로젝트 ID는 `loadCodeAssist` / `onboardUser`로 해석해 `~/.gemini/agy-oauth.json`에 캐시합니다.
+5. 프로젝트 ID는 `loadCodeAssist` / `onboardUser`로 해석해 `~/.gemini/gemini-oauth.json`에 캐시합니다.
 
 ---
 

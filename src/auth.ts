@@ -32,7 +32,7 @@ export type GeminiOAuthCreds = {
   [extra: string]: unknown;
 };
 
-export type AgyLocalState = {
+export type GeminiLocalState = {
   projectId?: string;
   email?: string;
   userTier?: string;
@@ -145,7 +145,7 @@ export class GeminiAuthStore {
         refreshToken: token.refresh_token,
         expiresAt,
         projectId:
-          process.env.AGY_OAUTH_ANTIGRAVITY_PROJECT ?? "default-cli-project",
+          process.env.GEMINI_OAUTH_ANTIGRAVITY_PROJECT ?? "default-cli-project",
         raw: {
           access_token: token.access_token,
           refresh_token: token.refresh_token,
@@ -193,20 +193,20 @@ export class GeminiAuthStore {
     }
   }
 
-  readLocalState(): AgyLocalState {
+  readLocalState(): GeminiLocalState {
     if (!existsSync(this.stateFilePath)) return {};
     try {
       const raw = readFileSync(this.stateFilePath, "utf8");
       if (!raw.trim()) return {};
       const parsed: unknown = JSON.parse(raw);
       if (!isRecord(parsed)) return {};
-      return parsed as AgyLocalState;
+      return parsed as GeminiLocalState;
     } catch {
       return {};
     }
   }
 
-  writeLocalState(state: AgyLocalState): void {
+  writeLocalState(state: GeminiLocalState): void {
     ensureParent(this.stateFilePath);
     writeFileSync(
       this.stateFilePath,
@@ -273,7 +273,7 @@ export class GeminiAuthStore {
     const snap = this.getSessionSnapshot();
     if (!snap) {
       throw new Error(
-        `No Gemini credentials found at ${this.authFilePath}. Run \`gemini\` (login) or \`agy-oauth login\`.`,
+        `No Gemini credentials found at ${this.authFilePath}. Run \`gemini\` (login) or \`gemini-oauth login\`.`,
       );
     }
 
@@ -284,7 +284,7 @@ export class GeminiAuthStore {
     if (!snap.refreshToken) {
       if (options?.forceRefresh || !snap.accessToken) {
         throw new Error(
-          "Access token expired and no refresh_token is available. Run `agy-oauth login` again.",
+          "Access token expired and no refresh_token is available. Run `gemini-oauth login` again.",
         );
       }
       return snap;
@@ -383,7 +383,7 @@ export class GeminiAuthStore {
 
   /**
    * Persist a fresh OAuth grant into Gemini CLI `oauth_creds.json` so both
-   * `gemini` and `agy-oauth` share the same credentials.
+   * `gemini` and `gemini-oauth` share the same credentials.
    */
   saveOAuthTokens(tokens: {
     accessToken: string;

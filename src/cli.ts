@@ -18,7 +18,7 @@ import {
   stopDaemon,
 } from "./daemon.js";
 import { login } from "./oauth-login.js";
-import { startAgyOAuthServer } from "./server.js";
+import { startGeminiOAuthServer } from "./server.js";
 
 const help = `
 ${PACKAGE_NAME} v${PACKAGE_VERSION}
@@ -27,17 +27,17 @@ Turn your Gemini CLI (Google Code Assist OAuth) session into a local
 OpenAI-compatible API — the Gemini analogue of openai-oauth / grok-oauth.
 
 Usage:
-  agy-oauth [serve|start] [options]   Start local OpenAI-compatible proxy
-  agy-oauth stop                      Stop detached background server
-  agy-oauth status                    Auth + server process status
-  agy-oauth logs [--follow]           Show detached server log
-  agy-oauth login [options]           Sign in via browser (or device/headless)
-  agy-oauth logout                    Clear stored credentials
-  agy-oauth help                      Show this help
+  gemini-oauth [serve|start] [options]   Start local OpenAI-compatible proxy
+  gemini-oauth stop                      Stop detached background server
+  gemini-oauth status                    Auth + server process status
+  gemini-oauth logs [--follow]           Show detached server log
+  gemini-oauth login [options]           Sign in via browser (or device/headless)
+  gemini-oauth logout                    Clear stored credentials
+  gemini-oauth help                      Show this help
 
 Serve options:
   --host <host>          Bind address (default: ${DEFAULT_HOST})
-  --port <port>          Bind port (default: ${DEFAULT_PORT}, or $AGY_OAUTH_PORT)
+  --port <port>          Bind port (default: ${DEFAULT_PORT}, or $GEMINI_OAUTH_PORT)
   --auth-file <path>     Path to oauth_creds.json (default: ${DEFAULT_AUTH_FILE})
   --models <ids>         Comma-separated model allowlist
   --project <id>         Override GCP / Code Assist project id
@@ -51,13 +51,13 @@ Serve options:
   --follow, -f           (logs) Follow log file
 
 Port notes:
-  Default port is ${DEFAULT_PORT}. Env: AGY_OAUTH_PORT=18080 agy-oauth
+  Default port is ${DEFAULT_PORT}. Env: GEMINI_OAUTH_PORT=18080 gemini-oauth
 
 Examples:
-  agy-oauth --detach --port 18080
-  agy-oauth status
+  gemini-oauth --detach --port 18080
+  gemini-oauth status
   curl http://127.0.0.1:18080/v1/models
-  agy-oauth stop
+  gemini-oauth stop
 `.trim();
 
 const isPortOpen = (
@@ -93,7 +93,7 @@ async function cmdAuthStatus(authFile: string, project?: string): Promise<void> 
   });
   if (!store.hasCredentials()) {
     print(`Auth: not signed in (${authFile})`);
-    print(`Run: gemini   or   agy-oauth login`);
+    print(`Run: gemini   or   gemini-oauth login`);
   } else {
     try {
       const session = await store.getSession();
@@ -125,7 +125,7 @@ async function cmdAuthStatus(authFile: string, project?: string): Promise<void> 
     print(`  log_file:   ${daemon.logFile}`);
   } else {
     print(`Server: not running (detached)`);
-    print(`  start with: agy-oauth --detach`);
+    print(`  start with: gemini-oauth --detach`);
   }
 }
 
@@ -166,10 +166,10 @@ function printExistingServer(existing: {
   print(`Use this base URL (not the default ${DEFAULT_PORT}):`);
   print(`  ${existing.url}`);
   print(``);
-  print(`  agy-oauth status`);
-  print(`  agy-oauth logs --follow`);
-  print(`  agy-oauth stop`);
-  print(`  agy-oauth --force --port <other>  # foreground second instance`);
+  print(`  gemini-oauth status`);
+  print(`  gemini-oauth logs --follow`);
+  print(`  gemini-oauth stop`);
+  print(`  gemini-oauth --force --port <other>  # foreground second instance`);
 }
 
 const waitForDaemonReady = async (
@@ -210,7 +210,7 @@ async function cmdServe(opts: {
   rawServeArgs: string[];
 }): Promise<void> {
   const isDaemonChild =
-    opts.foreground || process.env.AGY_OAUTH_DAEMON === "1";
+    opts.foreground || process.env.GEMINI_OAUTH_DAEMON === "1";
   const isLoopback = ["127.0.0.1", "::1", "localhost"].includes(opts.host);
 
   if (!isLoopback && !opts.allowRemote) {
@@ -230,7 +230,7 @@ async function cmdServe(opts: {
           `Note: you requested port ${opts.port}, but the daemon is on ${existing.port}.`,
         );
         print(
-          `Stop it first (\`agy-oauth stop\`) if you want port ${opts.port}.`,
+          `Stop it first (\`gemini-oauth stop\`) if you want port ${opts.port}.`,
         );
       }
       return;
@@ -255,7 +255,7 @@ async function cmdServe(opts: {
       projectId: opts.project,
     });
     if (!store.hasCredentials()) {
-      print(`No credentials found. Run login first:\n  agy-oauth login\n`);
+      print(`No credentials found. Run login first:\n  gemini-oauth login\n`);
       fail("Cannot start detached server without credentials.");
     }
     await store.getSession();
@@ -275,7 +275,7 @@ async function cmdServe(opts: {
         : "";
       await stopDaemon(2000);
       fail(
-        `Server did not become healthy within 30 seconds. Check logs: agy-oauth logs\n${log}`,
+        `Server did not become healthy within 30 seconds. Check logs: gemini-oauth logs\n${log}`,
       );
     }
 
@@ -285,9 +285,9 @@ async function cmdServe(opts: {
     print(`  port: ${state.port}`);
     print(`  log: ${state.logFile}`);
     print(``);
-    print(`  agy-oauth status`);
-    print(`  agy-oauth logs --follow`);
-    print(`  agy-oauth stop`);
+    print(`  gemini-oauth status`);
+    print(`  gemini-oauth logs --follow`);
+    print(`  gemini-oauth stop`);
     return;
   }
 
@@ -300,7 +300,7 @@ async function cmdServe(opts: {
     fail(
       `Port ${opts.host}:${opts.port} is already in use.\n` +
         `  lsof -nP -iTCP:${opts.port} -sTCP:LISTEN\n` +
-        `  Or: agy-oauth status / agy-oauth stop`,
+        `  Or: gemini-oauth status / gemini-oauth stop`,
     );
   }
 
@@ -309,7 +309,7 @@ async function cmdServe(opts: {
     projectId: opts.project,
   });
   if (!store.hasCredentials()) {
-    if (process.env.AGY_OAUTH_DAEMON === "1") {
+    if (process.env.GEMINI_OAUTH_DAEMON === "1") {
       fail("No credentials found for daemon server.");
     }
     print(`No credentials found. Starting login…\n`);
@@ -320,7 +320,7 @@ async function cmdServe(opts: {
 
   let running;
   try {
-    running = await startAgyOAuthServer({
+    running = await startGeminiOAuthServer({
       host: opts.host,
       port: opts.port,
       auth: store,
@@ -331,7 +331,7 @@ async function cmdServe(opts: {
     if (msg.includes("EADDRINUSE")) {
       fail(
         `Port ${opts.host}:${opts.port} is already in use (EADDRINUSE).\n` +
-          `  agy-oauth status\n  agy-oauth stop\n  Or pick another port: --port <n>`,
+          `  gemini-oauth status\n  gemini-oauth stop\n  Or pick another port: --port <n>`,
       );
     }
     throw err;
@@ -343,7 +343,7 @@ async function cmdServe(opts: {
   print(`  port: ${running.port}`);
   if (!opts.portExplicit && running.port === DEFAULT_PORT) {
     print(
-      `  (default port ${DEFAULT_PORT}; override with --port or AGY_OAUTH_PORT)`,
+      `  (default port ${DEFAULT_PORT}; override with --port or GEMINI_OAUTH_PORT)`,
     );
   }
   print(`Use this as your OpenAI base URL. No API key is required.`);
@@ -356,8 +356,8 @@ async function cmdServe(opts: {
   print(
     `  curl ${running.url}/chat/completions -H 'Content-Type: application/json' -d '{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"hi"}]}'`,
   );
-  if (process.env.AGY_OAUTH_DAEMON === "1") {
-    print(`(detached daemon mode — stop with: agy-oauth stop)`);
+  if (process.env.GEMINI_OAUTH_DAEMON === "1") {
+    print(`(detached daemon mode — stop with: gemini-oauth stop)`);
   } else {
     print("");
     print(`Press Ctrl+C to stop.`);
@@ -498,8 +498,8 @@ async function main(): Promise<void> {
   }
 
   if (command === "serve" || command === "start" || command === "proxy") {
-    const portExplicit = Boolean(values.port || process.env.AGY_OAUTH_PORT);
-    const rawPort = values.port ?? process.env.AGY_OAUTH_PORT;
+    const portExplicit = Boolean(values.port || process.env.GEMINI_OAUTH_PORT);
+    const rawPort = values.port ?? process.env.GEMINI_OAUTH_PORT;
     const port = rawPort === undefined ? DEFAULT_PORT : Number(rawPort);
     if (!Number.isSafeInteger(port) || port <= 0 || port > 65535) {
       fail(`Invalid --port: ${rawPort}`);

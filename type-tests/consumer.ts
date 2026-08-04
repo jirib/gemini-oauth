@@ -1,10 +1,10 @@
 import {
   GeminiAuthStore,
   GeminiUpstream,
-  startAgyOAuthServer,
+  startGeminiOAuthServer,
   type AuthStoreOptions,
   type ServerOptions,
-} from "agy-oauth";
+} from "gemini-oauth";
 
 const authOptions: AuthStoreOptions = {
   useAntigravityKeyring: false,
@@ -20,4 +20,4 @@ const serverOptions: ServerOptions = {
 };
 
 void upstream;
-void startAgyOAuthServer(serverOptions);
+void startGeminiOAuthServer(serverOptions);

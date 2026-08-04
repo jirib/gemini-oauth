@@ -314,7 +314,7 @@ const pipeStream = async (
   }
 };
 
-export async function startAgyOAuthServer(
+export async function startGeminiOAuthServer(
   options: ServerOptions,
 ): Promise<RunningServer> {
   const host = options.host ?? DEFAULT_HOST;

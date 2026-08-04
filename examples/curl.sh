@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Requires: agy-oauth running (default http://127.0.0.1:10551)
+# Requires: gemini-oauth running (default http://127.0.0.1:10551)
 set -euo pipefail
-BASE="${AGY_OAUTH_BASE:-http://127.0.0.1:10551/v1}"
+BASE="${GEMINI_OAUTH_BASE:-http://127.0.0.1:10551/v1}"
 
 echo "== models =="
 curl -sS "$BASE/models" | python3 -m json.tool

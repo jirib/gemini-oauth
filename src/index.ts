@@ -2,11 +2,11 @@ export {
   GeminiAuthStore,
   type GeminiSession,
   type GeminiOAuthCreds,
-  type AgyLocalState,
+  type GeminiLocalState,
   type AuthStoreOptions,
 } from "./auth.js";
 export {
-  startAgyOAuthServer,
+  startGeminiOAuthServer,
   type ServerOptions,
   type RunningServer,
 } from "./server.js";

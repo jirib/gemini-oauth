@@ -18,7 +18,7 @@ const runCli = (...args) =>
 test("CLI version comes from package.json", () => {
   const result = runCli("--version");
   assert.equal(result.status, 0);
-  assert.equal(result.stdout.trim(), `agy-oauth ${packageJson.version}`);
+  assert.equal(result.stdout.trim(), `gemini-oauth ${packageJson.version}`);
 });
 
 test("CLI rejects invalid ports before starting auth or a server", () => {
@@ -42,5 +42,5 @@ test("CLI requires explicit opt-in for a non-loopback bind", () => {
 });
 
 test("package bin metadata uses a publish-safe relative path", () => {
-  assert.equal(packageJson.bin["agy-oauth"], "dist/cli.js");
+  assert.equal(packageJson.bin["gemini-oauth"], "dist/cli.js");
 });
