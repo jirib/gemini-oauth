@@ -26,6 +26,22 @@ const randomString = (bytes = 32): string => base64Url(randomBytes(bytes));
 const sha256Base64Url = (value: string): string =>
   base64Url(createHash("sha256").update(value).digest());
 
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+
 const openBrowser = (url: string): void => {
   const cmd =
     platform() === "darwin"
@@ -98,7 +114,21 @@ const exchangeCode = async (
       `Code exchange failed (${response.status}): ${text.slice(0, 500)}`,
     );
   }
-  return JSON.parse(text) as {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Code exchange returned non-JSON body");
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    typeof (parsed as Record<string, unknown>).access_token !== "string" ||
+    !(parsed as Record<string, unknown>).access_token
+  ) {
+    throw new Error("Code exchange response missing access_token");
+  }
+  return parsed as {
     access_token: string;
     refresh_token?: string;
     expires_in?: number;
@@ -182,82 +212,117 @@ export async function loginBrowser(options: LoginOptions): Promise<LoginResult> 
   const codeVerifier = randomString(32);
   const codeChallenge = sha256Base64Url(codeVerifier);
 
-  const { redirectUri, waitForCode } = await new Promise<{
-    redirectUri: string;
-    waitForCode: Promise<{ code: string; state: string }>;
-  }>((resolve, reject) => {
-    const server = createServer((req, res) => {
-      try {
-        const url = new URL(req.url ?? "/", `http://${host}`);
-        if (url.pathname !== "/oauth2callback" && url.pathname !== "/callback") {
-          res.writeHead(404).end("Not found");
-          return;
-        }
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-        const error = url.searchParams.get("error");
-        if (error) {
-          res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(
-            `<html><body><h1>Login failed</h1><p>${error}</p><p>You can close this window.</p></body></html>`,
-          );
-          server.close();
-          reject(new Error(`OAuth error: ${error}`));
-          return;
-        }
-        if (!code || !returnedState) {
-          res.writeHead(400).end("Missing code/state");
-          return;
-        }
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(
-          `<html><body><h1>Signed in</h1><p>You can close this window and return to the terminal.</p></body></html>`,
-        );
-        server.close();
-        (
-          server as unknown as {
-            __resolve?: (v: { code: string; state: string }) => void;
-          }
-        ).__resolve?.({ code, state: returnedState });
-      } catch (err) {
-        reject(err);
+  let resolveCode!: (value: { code: string; state: string }) => void;
+  let rejectCode!: (error: Error) => void;
+  const waitForCode = new Promise<{ code: string; state: string }>(
+    (resolve, reject) => {
+      resolveCode = resolve;
+      rejectCode = reject;
+    },
+  );
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const server = createServer((req, res) => {
+    try {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      if (url.pathname !== "/oauth2callback" && url.pathname !== "/callback") {
+        res.writeHead(404).end("Not found");
+        return;
       }
-    });
+      const code = url.searchParams.get("code");
+      const returnedState = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
 
-    server.once("error", reject);
-    server.listen(0, host, () => {
-      const addr = server.address() as AddressInfo;
-      // Google requires loopback IP literal for desktop OAuth clients.
-      const redirectUri = `http://127.0.0.1:${addr.port}/oauth2callback`;
-      const waitForCode = new Promise<{ code: string; state: string }>(
-        (res, rej) => {
-          (
-            server as unknown as {
-              __resolve?: (v: { code: string; state: string }) => void;
-            }
-          ).__resolve = res;
-          const timer = setTimeout(() => {
-            server.close();
-            rej(new Error(`Login timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-          const orig = (
-            server as unknown as {
-              __resolve?: (v: { code: string; state: string }) => void;
-            }
-          ).__resolve;
-          (
-            server as unknown as {
-              __resolve?: (v: { code: string; state: string }) => void;
-            }
-          ).__resolve = (v) => {
-            clearTimeout(timer);
-            orig?.(v);
-          };
-        },
+      if (returnedState !== state) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(
+          "<html><body><h1>Login failed</h1><p>OAuth state mismatch. Return to the terminal and retry.</p></body></html>",
+        );
+        return;
+      }
+
+      if (error) {
+        const description =
+          url.searchParams.get("error_description") ?? error;
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(
+          `<html><body><h1>Login failed</h1><p>${escapeHtml(description)}</p><p>You can close this window.</p></body></html>`,
+        );
+        if (!settled) {
+          settled = true;
+          if (timer) clearTimeout(timer);
+          server.close();
+          rejectCode(new Error(`OAuth error: ${error}`));
+        }
+        return;
+      }
+
+      if (!code) {
+        res.writeHead(400).end("Missing authorization code");
+        if (!settled) {
+          settled = true;
+          if (timer) clearTimeout(timer);
+          server.close();
+          rejectCode(new Error("OAuth callback missing authorization code"));
+        }
+        return;
+      }
+
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        "<html><body><h1>Signed in</h1><p>You can close this window and return to the terminal.</p></body></html>",
       );
-      resolve({ redirectUri, waitForCode });
+      if (!settled) {
+        settled = true;
+        if (timer) clearTimeout(timer);
+        server.close();
+        resolveCode({ code, state: returnedState });
+      }
+    } catch (error) {
+      if (!res.headersSent) res.writeHead(500).end("OAuth callback failed");
+      if (!settled) {
+        settled = true;
+        if (timer) clearTimeout(timer);
+        server.close();
+        rejectCode(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const onStartupError = (error: Error) => reject(error);
+    server.once("error", onStartupError);
+    server.listen(0, host, () => {
+      server.off("error", onStartupError);
+      resolve();
     });
   });
+  server.once("error", (error) => {
+    if (!settled) {
+      settled = true;
+      if (timer) clearTimeout(timer);
+      rejectCode(error);
+    }
+  });
+
+  const addr = server.address() as AddressInfo;
+  const callbackAddress =
+    addr.address === "0.0.0.0"
+      ? "127.0.0.1"
+      : addr.address === "::"
+        ? "::1"
+        : addr.address;
+  const callbackHost = callbackAddress.includes(":")
+    ? `[${callbackAddress}]`
+    : callbackAddress;
+  // Google desktop OAuth requires a loopback IP literal.
+  const redirectUri = `http://${callbackHost}:${addr.port}/oauth2callback`;
+  timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    server.close();
+    rejectCode(new Error(`Login timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
 
   const authUrl = new URL(GOOGLE_AUTH_URL);
   authUrl.searchParams.set("response_type", "code");
@@ -276,9 +341,6 @@ export async function loginBrowser(options: LoginOptions): Promise<LoginResult> 
   }
 
   const result = await waitForCode;
-  if (result.state !== state) {
-    throw new Error("OAuth state mismatch — aborting login");
-  }
 
   const tokens = await exchangeCode(fetchImpl, {
     code: result.code,

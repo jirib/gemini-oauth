@@ -3,8 +3,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 
-export const PACKAGE_NAME = "agy-oauth";
-export const PACKAGE_VERSION = "0.1.0";
+const packageMetadata = createRequire(import.meta.url)("../package.json") as {
+  name: string;
+  version: string;
+};
+
+export const PACKAGE_NAME = packageMetadata.name;
+export const PACKAGE_VERSION = packageMetadata.version;
 
 /**
  * Official Gemini CLI OAuth client credentials.
@@ -77,6 +82,7 @@ export function coreClientMetadata(
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 10551;
+export const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 export const DEFAULT_GEMINI_HOME = join(homedir(), ".gemini");
 /** Shared with official Gemini CLI. */
@@ -132,7 +138,7 @@ export function resolveClientVersion(): string {
   return "0.49.0";
 }
 
-/** User-Agent for generateContent (Gemini CLI path). */
+/** Gemini CLI-compatible User-Agent used for OAuth token operations. */
 export function userAgent(model = "gemini-code-assist"): string {
   return `GeminiCLI/${resolveClientVersion()}/${model} (${process.platform}; ${process.arch})`;
 }

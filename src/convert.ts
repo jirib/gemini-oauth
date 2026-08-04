@@ -155,6 +155,7 @@ function convertMessages(messages: OpenAIMessage[]): {
   systemInstruction?: { parts: GeminiPart[] };
 } {
   const contents: GeminiContent[] = [];
+  const toolNamesByCallId = new Map<string, string>();
   let systemInstruction: { parts: GeminiPart[] } | undefined;
 
   for (const message of messages) {
@@ -174,9 +175,15 @@ function convertMessages(messages: OpenAIMessage[]): {
     }
 
     if (message.role === "tool") {
+      const functionName =
+        message.name ??
+        (message.tool_call_id
+          ? toolNamesByCallId.get(message.tool_call_id)
+          : undefined) ??
+        "tool";
       const part: GeminiPart = {
         functionResponse: {
-          name: message.name ?? "tool",
+          name: functionName,
           response: {
             content:
               typeof message.content === "string"
@@ -196,6 +203,9 @@ function convertMessages(messages: OpenAIMessage[]): {
 
     const role: "user" | "model" =
       message.role === "assistant" ? "model" : "user";
+    for (const call of message.tool_calls ?? []) {
+      toolNamesByCallId.set(call.id, call.function.name);
+    }
     const parts = messageToGeminiParts(message);
     if (parts.length > 0) {
       contents.push({ role, parts });
@@ -271,7 +281,7 @@ function mergeConsecutiveTurns(contents: GeminiContent[]): GeminiContent[] {
   return merged;
 }
 
-function convertTools(tools: OpenAITool[]): unknown {
+function convertTools(tools: OpenAITool[]): unknown | undefined {
   const functionDeclarations = tools
     .filter((t) => t.type === "function")
     .map((t) => ({
@@ -279,6 +289,7 @@ function convertTools(tools: OpenAITool[]): unknown {
       description: t.function.description,
       parameters: t.function.parameters,
     }));
+  if (functionDeclarations.length === 0) return undefined;
   return [{ functionDeclarations }];
 }
 
@@ -292,12 +303,11 @@ export function geminiResponseToOpenAI(
   const parts = candidate?.content?.parts ?? [];
 
   const toolCalls = extractToolCalls(candidate);
-  const textContent = toolCalls
-    ? null
-    : parts
-        .filter((p) => p.text !== undefined && !p.thought)
-        .map((p) => p.text ?? "")
-        .join("") || null;
+  const textContent =
+    parts
+      .filter((p) => p.text !== undefined && !p.thought)
+      .map((p) => p.text ?? "")
+      .join("") || null;
 
   return {
     id: `chatcmpl-${randomUUID()}`,
@@ -312,7 +322,10 @@ export function geminiResponseToOpenAI(
           content: textContent,
           ...(toolCalls ? { tool_calls: toolCalls } : {}),
         },
-        finish_reason: mapFinishReason(candidate?.finishReason),
+        finish_reason: mapFinishReason(
+          candidate?.finishReason,
+          Boolean(toolCalls),
+        ),
       },
     ],
     usage: buildUsage(geminiBody.usageMetadata),
@@ -323,21 +336,27 @@ export function geminiChunkToOpenAI(
   geminiBody: GeminiResponse,
   model: string,
   chunkId: string,
+  state?: GeminiStreamState,
 ): Record<string, unknown> {
   const candidate = geminiBody.candidates?.[0];
   const parts = candidate?.content?.parts ?? [];
 
-  const toolCallDeltas = extractStreamingToolCalls(candidate);
-  const textDelta = toolCallDeltas
-    ? undefined
-    : parts
-        .filter((p) => p.text !== undefined && !p.thought)
-        .map((p) => p.text ?? "")
-        .join("") || undefined;
+  const toolCallDeltas = extractStreamingToolCalls(candidate, state);
+  const textDelta =
+    parts
+      .filter((p) => p.text !== undefined && !p.thought)
+      .map((p) => p.text ?? "")
+      .join("") || undefined;
+  if (toolCallDeltas && state) state.sawToolCalls = true;
 
   const finishReason = candidate?.finishReason
-    ? mapFinishReason(candidate.finishReason)
+    ? mapFinishReason(
+        candidate.finishReason,
+        state?.sawToolCalls ?? Boolean(toolCallDeltas),
+      )
     : null;
+  const includeRole = !state || !state.sentRole;
+  if (state) state.sentRole = true;
 
   return {
     id: chunkId,
@@ -348,7 +367,7 @@ export function geminiChunkToOpenAI(
       {
         index: 0,
         delta: {
-          role: "assistant",
+          ...(includeRole ? { role: "assistant" } : {}),
           ...(textDelta !== undefined ? { content: textDelta } : {}),
           ...(toolCallDeltas ? { tool_calls: toolCallDeltas } : {}),
         },
@@ -357,6 +376,12 @@ export function geminiChunkToOpenAI(
     ],
   };
 }
+
+export type GeminiStreamState = {
+  toolCallIds: Map<number, string>;
+  sawToolCalls: boolean;
+  sentRole: boolean;
+};
 
 /**
  * Convert OpenAI Responses API input into chat-style messages, then reuse
@@ -432,6 +457,14 @@ export function chatCompletionToResponses(
       }>
     | undefined;
   const text = choices?.[0]?.message?.content ?? "";
+  const finishReason = choices?.[0]?.finish_reason;
+  const incompleteReason =
+    finishReason === "length"
+      ? "max_output_tokens"
+      : finishReason === "content_filter"
+        ? "content_filter"
+        : undefined;
+  const status = incompleteReason ? "incomplete" : "completed";
   const usage = (completion.usage ?? {}) as Record<string, number>;
   const id = `resp_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
@@ -439,14 +472,17 @@ export function chatCompletionToResponses(
     id,
     object: "response",
     created_at: Math.floor(Date.now() / 1000),
-    status: "completed",
+    status,
+    ...(incompleteReason
+      ? { incomplete_details: { reason: incompleteReason } }
+      : {}),
     model,
     output: [
       {
         type: "message",
         id: `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
         role: "assistant",
-        status: "completed",
+        status,
         content: [
           {
             type: "output_text",
@@ -483,6 +519,7 @@ function extractToolCalls(
 
 function extractStreamingToolCalls(
   candidate: GeminiCandidate | undefined,
+  state?: GeminiStreamState,
 ): Array<{
   index: number;
   id: string;
@@ -492,19 +529,30 @@ function extractStreamingToolCalls(
   if (!candidate?.content?.parts) return undefined;
   const calls = candidate.content.parts
     .filter((p) => p.functionCall !== undefined)
-    .map((p, index) => ({
-      index,
-      id: `call_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
-      type: "function" as const,
-      function: {
-        name: p.functionCall?.name ?? "",
-        arguments: JSON.stringify(p.functionCall?.args ?? {}),
-      },
-    }));
+    .map((p, index) => {
+      let id = state?.toolCallIds.get(index);
+      if (!id) {
+        id = `call_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
+        state?.toolCallIds.set(index, id);
+      }
+      return {
+        index,
+        id,
+        type: "function" as const,
+        function: {
+          name: p.functionCall?.name ?? "",
+          arguments: JSON.stringify(p.functionCall?.args ?? {}),
+        },
+      };
+    });
   return calls.length > 0 ? calls : undefined;
 }
 
-function mapFinishReason(geminiReason: string | undefined): string {
+function mapFinishReason(
+  geminiReason: string | undefined,
+  hasToolCalls = false,
+): string {
+  if (hasToolCalls) return "tool_calls";
   switch (geminiReason) {
     case "STOP":
       return "stop";
