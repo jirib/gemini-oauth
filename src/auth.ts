@@ -56,6 +56,8 @@ export type AuthStoreOptions = {
   clientSecret?: string;
   projectId?: string;
   fetch?: typeof fetch;
+  /** Prefer the Antigravity macOS keyring session when available. */
+  useAntigravityKeyring?: boolean;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -72,6 +74,7 @@ export class GeminiAuthStore {
   readonly clientSecret: string;
   private projectIdOverride?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly useAntigravityKeyring: boolean;
   private refreshPromise: Promise<GeminiSession> | null = null;
   private projectPromise: Promise<string> | null = null;
 
@@ -83,7 +86,9 @@ export class GeminiAuthStore {
   private readAntigravityKeyringSession(
     allowRefresh = true,
   ): GeminiSession | null {
-    if (process.platform !== "darwin") return null;
+    if (!this.useAntigravityKeyring || process.platform !== "darwin") {
+      return null;
+    }
 
     try {
       const stored = execFileSync(
@@ -161,6 +166,7 @@ export class GeminiAuthStore {
     this.clientSecret = options.clientSecret ?? OAUTH_CLIENT_SECRET;
     this.projectIdOverride = options.projectId;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.useAntigravityKeyring = options.useAntigravityKeyring ?? true;
   }
 
   readCreds(): GeminiOAuthCreds | null {

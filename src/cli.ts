@@ -43,7 +43,8 @@ Serve options:
   --project <id>         Override GCP / Code Assist project id
   --detach, -d           Run in background (daemon)
   --foreground           Force foreground (used by daemon child)
-  --force                Start even if a detached server is already running
+  --force                Ignore daemon guard for a foreground second instance
+  --allow-remote         Required with a non-loopback --host (unsafe)
   --no-open              (login) Print URL only, do not open browser
   --device               (login) Headless code paste flow (SSH)
   --timeout-ms <ms>      (login) Login timeout
@@ -77,15 +78,6 @@ const isPortOpen = (
     socket.once("error", () => done(false));
   });
 
-const resolveDefaultPort = (): number => {
-  const fromEnv = process.env.AGY_OAUTH_PORT;
-  if (fromEnv) {
-    const n = Number(fromEnv);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return DEFAULT_PORT;
-};
-
 const print = (msg: string) => process.stdout.write(`${msg}\n`);
 const fail = (msg: string, code = 1): never => {
   process.stderr.write(`${msg}\n`);
@@ -110,9 +102,7 @@ async function cmdAuthStatus(authFile: string, project?: string): Promise<void> 
       if (session.expiresAt)
         print(`  expires_at: ${session.expiresAt.toISOString()}`);
       print(`  auth_file:  ${authFile}`);
-      print(
-        `  token:      ${session.accessToken.slice(0, 12)}… (${session.accessToken.length} chars)`,
-      );
+      print(`  token:      available`);
       try {
         const projectId = await store.ensureProjectId();
         print(`  project:    ${projectId}`);
@@ -179,8 +169,32 @@ function printExistingServer(existing: {
   print(`  agy-oauth status`);
   print(`  agy-oauth logs --follow`);
   print(`  agy-oauth stop`);
-  print(`  agy-oauth --force …     # start a second instance anyway`);
+  print(`  agy-oauth --force --port <other>  # foreground second instance`);
 }
+
+const waitForDaemonReady = async (
+  state: { url: string },
+  timeoutMs = 30_000,
+): Promise<boolean> => {
+  const healthUrl = `${state.url.replace(/\/v1\/?$/, "")}/health`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!getRunningDaemon()) return false;
+    try {
+      const response = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(750),
+      });
+      const body = (await response.json()) as { ok?: boolean; name?: string };
+      if (response.ok && body.ok === true && body.name === PACKAGE_NAME) {
+        return true;
+      }
+    } catch {
+      // The child may still be resolving auth/project state before listening.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return false;
+};
 
 async function cmdServe(opts: {
   host: string;
@@ -191,11 +205,20 @@ async function cmdServe(opts: {
   detach: boolean;
   foreground: boolean;
   force: boolean;
+  allowRemote: boolean;
   portExplicit: boolean;
   rawServeArgs: string[];
 }): Promise<void> {
   const isDaemonChild =
     opts.foreground || process.env.AGY_OAUTH_DAEMON === "1";
+  const isLoopback = ["127.0.0.1", "::1", "localhost"].includes(opts.host);
+
+  if (!isLoopback && !opts.allowRemote) {
+    fail(
+      `Refusing non-loopback host ${opts.host} without --allow-remote. ` +
+        `${PACKAGE_NAME} does not authenticate proxy clients.`,
+    );
+  }
 
   if (!isDaemonChild && !opts.force) {
     const existing = getRunningDaemon();
@@ -214,7 +237,19 @@ async function cmdServe(opts: {
     }
   }
 
+  if (!isLoopback) {
+    print(
+      `WARNING: ${PACKAGE_NAME} has no proxy API-key check; binding ${opts.host} can expose your Google OAuth quota to the network.`,
+    );
+  }
+
   if (opts.detach && !opts.foreground) {
+    if (opts.force && getRunningDaemon()) {
+      fail(
+        "Only one detached server can be tracked. Stop the existing daemon, " +
+          "or use --force without --detach on a different port.",
+      );
+    }
     const store = new GeminiAuthStore({
       authFilePath: opts.authFile,
       projectId: opts.project,
@@ -233,13 +268,15 @@ async function cmdServe(opts: {
       authFile: opts.authFile,
     });
 
-    await new Promise((r) => setTimeout(r, 800));
-    const still = getRunningDaemon();
-    if (!still) {
+    const ready = await waitForDaemonReady(state);
+    if (!ready) {
       const log = existsSync(DAEMON_LOG_FILE)
         ? readFileSync(DAEMON_LOG_FILE, "utf8").slice(-1500)
         : "";
-      fail(`Server failed to stay up. Check logs: agy-oauth logs\n${log}`);
+      await stopDaemon(2000);
+      fail(
+        `Server did not become healthy within 30 seconds. Check logs: agy-oauth logs\n${log}`,
+      );
     }
 
     print(`Gemini OAuth proxy started in background`);
@@ -381,6 +418,7 @@ async function main(): Promise<void> {
       detach: { type: "boolean", short: "d", default: false },
       foreground: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
+      "allow-remote": { type: "boolean", default: false },
       follow: { type: "boolean", short: "f", default: false },
       help: { type: "boolean", default: false },
       version: { type: "boolean", default: false },
@@ -397,6 +435,9 @@ async function main(): Promise<void> {
   }
 
   const command = (positionals[0] ?? "serve").toLowerCase();
+  if (positionals.length > 1) {
+    fail(`Unexpected positional arguments: ${positionals.slice(1).join(" ")}`);
+  }
   const authFile = values["auth-file"] ?? DEFAULT_AUTH_FILE;
   const open = values["no-open"] ? false : values.open !== false;
   const project = values.project;
@@ -407,13 +448,20 @@ async function main(): Promise<void> {
   }
 
   if (command === "login") {
+    const timeoutMs = values["timeout-ms"]
+      ? Number(values["timeout-ms"])
+      : undefined;
+    if (
+      timeoutMs !== undefined &&
+      (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0)
+    ) {
+      fail(`Invalid --timeout-ms: ${values["timeout-ms"]}`);
+    }
     await cmdLogin({
       authFile,
       open,
       device: Boolean(values.device),
-      timeoutMs: values["timeout-ms"]
-        ? Number(values["timeout-ms"])
-        : undefined,
+      timeoutMs,
       project,
     });
     return;
@@ -422,7 +470,10 @@ async function main(): Promise<void> {
   if (command === "logout") {
     const store = new GeminiAuthStore({ authFilePath: authFile });
     store.clear();
-    print(`Cleared credentials at ${authFile}`);
+    print(`Cleared Gemini CLI credentials at ${authFile}`);
+    print(
+      "Note: the Antigravity OS-keyring session is managed separately and was not removed.",
+    );
     return;
   }
 
@@ -448,9 +499,10 @@ async function main(): Promise<void> {
 
   if (command === "serve" || command === "start" || command === "proxy") {
     const portExplicit = Boolean(values.port || process.env.AGY_OAUTH_PORT);
-    const port = values.port ? Number(values.port) : resolveDefaultPort();
-    if (!Number.isFinite(port) || port <= 0) {
-      fail(`Invalid --port: ${values.port ?? process.env.AGY_OAUTH_PORT}`);
+    const rawPort = values.port ?? process.env.AGY_OAUTH_PORT;
+    const port = rawPort === undefined ? DEFAULT_PORT : Number(rawPort);
+    if (!Number.isSafeInteger(port) || port <= 0 || port > 65535) {
+      fail(`Invalid --port: ${rawPort}`);
     }
     const host = values.host ?? DEFAULT_HOST;
 
@@ -461,6 +513,7 @@ async function main(): Promise<void> {
       rawServeArgs.push("--auth-file", values["auth-file"]);
     if (values.models) rawServeArgs.push("--models", values.models);
     if (values.project) rawServeArgs.push("--project", values.project);
+    if (values["allow-remote"]) rawServeArgs.push("--allow-remote");
 
     await cmdServe({
       host,
@@ -476,6 +529,7 @@ async function main(): Promise<void> {
       detach: Boolean(values.detach),
       foreground: Boolean(values.foreground),
       force: Boolean(values.force),
+      allowRemote: Boolean(values["allow-remote"]),
       portExplicit,
       rawServeArgs,
     });

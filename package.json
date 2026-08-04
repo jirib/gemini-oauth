@@ -4,7 +4,7 @@
   "description": "Turn your Gemini CLI (Code Assist OAuth) session into an OpenAI-compatible local API — the Gemini analogue of openai-oauth / grok-oauth.",
   "type": "module",
   "bin": {
-    "agy-oauth": "./dist/cli.js"
+    "agy-oauth": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,16 +17,21 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "examples"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs",
-    "clean": "rm -rf dist *.tgz",
+    "clean": "node scripts/clean.mjs",
     "start": "node dist/cli.js",
-    "dev": "node --experimental-strip-types src/cli.ts",
+    "dev": "npm run build && node dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:consumer": "tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --lib ES2022 type-tests/consumer.ts",
+    "test": "npm run build && node --test",
+    "check": "npm run typecheck && npm test && npm run typecheck:consumer",
     "prepack": "npm run build",
+    "prepublishOnly": "npm run check",
     "pack:local": "npm pack",
     "install:global": "npm run build && npm install -g .",
     "uninstall:global": "npm uninstall -g agy-oauth"
@@ -56,8 +61,10 @@
   },
   "homepage": "https://github.com/kimws/agy-oauth#readme",
   "preferGlobal": true,
+  "dependencies": {
+    "@types/node": "^24.3.0"
+  },
   "devDependencies": {
-    "@types/node": "^24.3.0",
     "typescript": "^5.9.2"
   }
 }
