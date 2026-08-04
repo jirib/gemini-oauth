@@ -2,63 +2,81 @@
 
 **Gemini CLI OAuth → local OpenAI-compatible API**
 
-`openai-oauth` / `grok-oauth`의 **Gemini CLI** 버전입니다. 이미 로그인된 **Gemini CLI** (`~/.gemini/oauth_creds.json`) 세션 또는 macOS Antigravity keyring 세션을 사용해, 로컬에서 **OpenAI-compatible API subset**을 띄웁니다. 별도 `GEMINI_API_KEY` 없이 Google 계정(Code Assist / Gemini CLI 구독 티어)으로 chat·responses를 호출할 수 있습니다.
+[한국어 문서](README.ko.md)
 
-```txt
-$ npm run install:global
+gemini-oauth is an unofficial local proxy that reuses an authenticated Gemini CLI / Google Code Assist OAuth session and exposes a small OpenAI-compatible API for local clients. It is useful when a tool already speaks the OpenAI Chat Completions API but you want requests to use an eligible Google account's Gemini CLI / Code Assist access instead of an API key.
+
+```
 $ gemini-oauth --detach --port 18080
 
 Gemini OAuth proxy started in background
   url: http://127.0.0.1:18080/v1
 ```
 
-> **Unofficial.** Google / Gemini과 무관한 커뮤니티 프로젝트입니다. 계정 이용약관·사용 정책을 준수하세요. 자격 증명은 비밀번호처럼 다루고, 토큰을 공유·재판매하지 마세요. Code Assist OAuth를 서드파티 프록시로 재사용하는 행위는 약관 위반으로 계정 제재 위험이 있습니다.
+> **Unofficial project.** This project is not affiliated with, sponsored by, or endorsed by Google LLC, Gemini, Gemini CLI, or Antigravity. Read the legal and licensing notes before using it.
 
----
+## What the project does
 
-## 무엇을 하나요?
+Gemini CLI normally stores a Google OAuth session in ~/.gemini/oauth_creds.json. This project:
 
-| openai-oauth | grok-oauth | **gemini-oauth** |
-|---|---|---|
-| ChatGPT / Codex OAuth (`~/.codex`) | Grok CLI OAuth (`~/.grok/auth.json`) | Gemini CLI OAuth (`~/.gemini/oauth_creds.json`) |
-| Upstream: Codex backend | Upstream: `cli-chat-proxy.grok.com` | Upstream: `daily-cloudcode-pa.googleapis.com/v1internal` |
-| 로컬 `http://127.0.0.1:10531/v1` | 로컬 `http://127.0.0.1:10541/v1` | 로컬 `http://127.0.0.1:10551/v1` |
-| OpenAI-compatible | 동일 | 동일 (OpenAI SDK, curl, 호환 클라이언트) |
+1. reads that session, or a supported Antigravity macOS keychain session;
+2. refreshes an OAuth access token when it is close to expiry;
+3. resolves or uses a Cloud Code Assist project ID;
+4. converts OpenAI-style messages, tools, images, and generation settings into the Code Assist request format;
+5. calls the Code Assist private upstream endpoint; and
+6. converts the result back to OpenAI Chat Completions or a minimal Responses-shaped result.
 
-Gemini CLI가 쓰는 **Code Assist 비공개 API**에 OAuth bearer를 붙여, OpenAI chat/completions 형식으로 변환·중계합니다.
+The proxy is local and stateless: the client must send the conversation history with every request. No hosted service, database, or separate GEMINI_API_KEY is required.
 
----
+### Main capabilities
 
-## 사전 요구사항
+- Browser OAuth login with PKCE, plus a headless/device-style flow for SSH sessions.
+- Reuse of an existing official Gemini CLI login.
+- Automatic access-token refresh and one retry after an upstream 401.
+- Foreground mode or a detached background daemon with status, logs, and stop commands.
+- OpenAI-compatible chat/completions with non-streaming and SSE streaming responses.
+- Minimal /v1/responses compatibility for non-streaming requests.
+- Function/tool-call conversion and data-URL image input conversion.
+- Configurable model allowlist, port, host, auth file, and Code Assist project.
+- Request validation and a default 10 MiB JSON request-body limit.
+- TypeScript library exports for embedding the auth store, upstream client, and HTTP server.
 
-1. **Node.js 20+**
-2. **Gemini CLI 로그인** (권장) 또는 `gemini-oauth login`
+The current upstream is the Code Assist private API at https://daily-cloudcode-pa.googleapis.com/v1internal. It is not the public Gemini API and it has no stability guarantee from this project.
 
-```bash
-# 공식 CLI로 이미 로그인되어 있으면 그대로 사용됩니다
-gemini
-# credentials: ~/.gemini/oauth_creds.json
-```
+## Requirements
 
-Google 계정 + Gemini CLI / Code Assist 이용 가능 티어가 필요합니다. 모델·한도는 **계정 구독**에 따릅니다.
+- Node.js 20 or newer.
+- An eligible Google account with Gemini CLI / Code Assist access.
+- An existing official Gemini CLI login, or the gemini-oauth login flow.
+- curl is useful for smoke testing; jq and Python are optional helpers.
 
-선택적으로 `GOOGLE_CLOUD_PROJECT`를 설정하면 해당 GCP 프로젝트를 사용합니다. 없으면 `loadCodeAssist` / `onboardUser`로 관리형 프로젝트를 자동 해석합니다.
+The official Gemini CLI is not installed by this package. Install it separately if you want to authenticate with gemini first.
 
----
+## Installation
 
-## 설치 & 실행
-
-### 소스에서 전역 설치 (권장)
+The package is not currently published to the npm registry. Install it from source:
 
 ```bash
 git clone https://github.com/kimws/gemini-oauth.git
 cd gemini-oauth
 npm ci
-npm run install:global
-# 동일: npm run build && npm install -g .
 ```
 
-아직 npm registry에는 게시하지 않았습니다. 배포용 tarball을 만들고 설치하려면:
+### Install the CLI globally
+
+The global-install script builds the TypeScript sources and installs the package:
+
+```bash
+npm run install:global
+
+# Equivalent commands:
+npm run build
+npm install -g .
+```
+
+If the npm global directory is not writable, configure a user-owned npm prefix or use the local commands below. The proxy itself does not need root privileges.
+
+### Create and install a local package tarball
 
 ```bash
 npm ci
@@ -66,94 +84,158 @@ npm pack
 npm install -g ./gemini-oauth-0.1.0.tgz
 ```
 
+The generated filename contains the version from package.json.
+
+## Authentication
+
+### Reuse an existing Gemini CLI session
+
+If the official Gemini CLI is already signed in, no second login is normally needed:
+
 ```bash
-# 백그라운드 서버 (기본 포트 10551)
+gemini-oauth status
 gemini-oauth --detach
+```
 
-# 포트 지정
+The default credentials file is ~/.gemini/oauth_creds.json.
+
+### Sign in with this CLI
+
+Browser-based loopback OAuth:
+
+```bash
+gemini-oauth login
+```
+
+SSH or headless environment:
+
+```bash
+gemini-oauth login --device
+```
+
+Print the authorization URL without opening a browser:
+
+```bash
+gemini-oauth login --no-open
+```
+
+The login flow uses OAuth with PKCE, saves credentials to the Gemini CLI-compatible file, and attempts to resolve the Code Assist project. If automatic project resolution is unavailable, set a project explicitly as described below.
+
+On macOS, the library also checks for an Antigravity session in the OS keychain by default. gemini-oauth logout does not remove that session; manage it with the corresponding Antigravity tooling.
+
+## Running the proxy
+
+### Foreground
+
+```bash
+npm start
+# or, after building:
+node dist/cli.js --port 18080
+```
+
+### Background daemon
+
+```bash
+gemini-oauth --detach
 gemini-oauth --detach --port 18080
+```
 
-# 상태 / 로그 / 중지
+Manage the daemon with:
+
+```bash
 gemini-oauth status
 gemini-oauth logs --follow
 gemini-oauth stop
 ```
 
-상태 파일·로그: `~/.gemini/oauth-proxy/` (`state.json`, `server.log`).  
-프로젝트 캐시: `~/.gemini/gemini-oauth.json`.
+The default base URL is http://127.0.0.1:10551/v1. A custom port changes the base URL; use the URL printed at startup or by status.
 
-### 이 저장소에서 (개발 / foreground)
+### CLI options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| --host <host> | 127.0.0.1 | Bind address. Non-loopback addresses require --allow-remote. |
+| --allow-remote | off | Acknowledge the risk of exposing an unauthenticated proxy. This does not add API authentication. |
+| --port <port> | 10551 | Listening port. GEMINI_OAUTH_PORT can also set the default. |
+| --auth-file <path> | ~/.gemini/oauth_creds.json | Gemini CLI-compatible OAuth credential file. |
+| --project <id> | automatic | Override the Code Assist / GCP project ID. |
+| --models <ids> | built-in allowlist | Comma-separated model IDs returned by /v1/models. |
+| --detach, -d | off | Start a background daemon. |
+| --device | off | Use the headless login flow. |
+| --no-open | off | Do not open a browser during login. |
+| --follow, -f | off | Follow the daemon log with logs. |
+| --force | off | Allow a second foreground process when intentionally using another port. |
+
+### Project selection
+
+Project resolution follows this order:
+
+1. --project;
+2. GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID;
+3. a cached project in ~/.gemini/gemini-oauth.json;
+4. a project obtained through Code Assist loadCodeAssist / onboardUser.
+
+If the account requires a user-owned GCP project:
 
 ```bash
-cd gemini-oauth
-npm install
-npm run build
-npm start                          # foreground, port 10551
-node dist/cli.js --port 18080
+export GOOGLE_CLOUD_PROJECT=my-gcp-project
+gemini-oauth --detach
+
+# Or for one invocation:
+gemini-oauth --project my-gcp-project --detach
 ```
 
-### CLI
+The project must be valid for the signed-in account and relevant Google service policies.
 
-```bash
-gemini-oauth                 # foreground 프록시 (미로그인 시 login 유도)
-gemini-oauth --detach        # 백그라운드 서버
-gemini-oauth stop
-gemini-oauth status
-gemini-oauth logs [--follow]
-gemini-oauth login           # 브라우저 OAuth (PKCE)
-gemini-oauth login --device  # 헤드리스 (코드 붙여넣기)
-gemini-oauth logout          # Gemini CLI 파일만 정리; Antigravity keyring은 별도 관리
-gemini-oauth --port 18080
-gemini-oauth --project my-gcp-project
-gemini-oauth --models gemini-2.5-pro,gemini-2.5-flash
-```
+## API compatibility
 
-| Flag | Default | 설명 |
-|------|---------|------|
-| `--host` | `127.0.0.1` | bind 주소. loopback 외 바인딩은 인증 없는 프록시를 네트워크에 노출합니다. |
-| `--allow-remote` | off | non-loopback `--host` 사용 시 필요한 명시적 위험 승인 |
-| `--port` | `10551` | 포트 |
-| `--auth-file` | `~/.gemini/oauth_creds.json` | Gemini CLI와 동일한 auth 파일 |
-| `--project` | (auto) | Code Assist / GCP project id |
-| `--models` | (built-in list) | 콤마 구분 allowlist |
-| `--detach` / `-d` | off | 백그라운드(daemon) 실행 |
-| `--device` | off | login 시 headless code paste |
-| `--no-open` | off | login 시 브라우저 자동 open 안 함 |
-| `--follow` / `-f` | off | `logs` 시 tail -f |
+| Method | Path | Support |
+| --- | --- | --- |
+| GET | / or /health | Local health and basic runtime information. |
+| GET | /v1/models | Configured model allowlist; not live model discovery. |
+| POST | /v1/chat/completions | OpenAI-style chat requests; streaming is supported. |
+| POST | /v1/responses | Minimal Responses-shaped compatibility; non-streaming only. |
 
----
+Common chat fields include model, messages, stream, temperature, top_p, stop, max_tokens, max_completion_tokens, tools, and tool-call messages. Content arrays support text and data-URL image_url blocks. This is an interoperability subset, not complete OpenAI API parity.
 
-## 지원 endpoint
+Important behavior:
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `GET` | `/health` | 로컬 헬스 |
-| `GET` | `/v1/models` | 모델 목록 (allowlist) |
-| `POST` | `/v1/chat/completions` | OpenAI chat (stream 지원) |
-| `POST` | `/v1/responses` | 간단 Responses 호환 (non-stream) |
+- /v1/responses with stream: true returns 400 unsupported_parameter; use /v1/chat/completions for SSE.
+- /v1/models returns the configured allowlist, not every model available to the account.
+- A listed model may still be unavailable to the account or tier; availability and quotas are controlled upstream.
+- Request bodies are limited to 10 MiB by default.
+- The proxy does not persist prompts, conversation history, or responses. Requests still go to the upstream Google service under its terms and data handling rules.
 
-토큰은 만료 임박 시 **자동 refresh** 하고, upstream `401` 시 한 번 더 refresh 후 재시도합니다. refresh 결과는 `~/.gemini/oauth_creds.json`에 기록해 **공식 `gemini` CLI와 공유**합니다.
+## Usage examples
 
-JSON 요청 본문은 기본 10 MiB까지 허용됩니다. `/v1/responses`에서 `stream: true`를 보내면 잘못된 이벤트 형식으로 응답하지 않고 `400 unsupported_parameter`를 반환합니다. 스트리밍은 `/v1/chat/completions`를 사용하세요.
-
----
-
-## 사용 예시
+Start the proxy first, then choose a model permitted for the signed-in account.
 
 ### curl
 
 ```bash
 export BASE=http://127.0.0.1:10551/v1
 
-curl -sS "$BASE/models" | jq .
+curl -sS "$BASE/models"
 
 curl -sS "$BASE/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-2.5-flash",
-    "messages": [{"role": "user", "content": "Hello!"}],
+    "messages": [{"role": "user", "content": "Reply with exactly: PONG"}],
     "stream": false
-  }' | jq .
+  }'
+```
+
+Streaming:
+
+```bash
+curl -N -sS "$BASE/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.5-flash",
+    "messages": [{"role": "user", "content": "Write a haiku about proxies."}],
+    "stream": true
+  }'
 ```
 
 ### OpenAI Node SDK
@@ -166,15 +248,16 @@ npm install openai
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: "gemini-oauth", // 로컬 프록시는 키를 검사하지 않음
+  apiKey: "gemini-oauth", // The local proxy does not validate this value.
   baseURL: "http://127.0.0.1:10551/v1",
 });
 
 const result = await client.chat.completions.create({
   model: "gemini-2.5-flash",
-  messages: [{ role: "user", content: "Hello!" }],
+  messages: [{ role: "user", content: "Hello from Node" }],
 });
-console.log(result.choices[0].message.content);
+
+console.log(result.choices[0]?.message?.content);
 ```
 
 ### OpenAI Python SDK
@@ -191,79 +274,131 @@ client = OpenAI(
     base_url="http://127.0.0.1:10551/v1",
 )
 
-r = client.chat.completions.create(
+result = client.chat.completions.create(
     model="gemini-2.5-flash",
-    messages=[{"role": "user", "content": "Hello!"}],
+    messages=[{"role": "user", "content": "Hello from Python"}],
 )
-print(r.choices[0].message.content)
+
+print(result.choices[0].message.content)
 ```
 
----
+The repository includes equivalent examples in the examples directory: curl.sh, fetch.mjs, openai-sdk.mjs, and openai_python.py.
 
-## 라이브러리로 쓰기
+## Use as a TypeScript library
 
 ```ts
-import { GeminiAuthStore, startGeminiOAuthServer, GeminiUpstream } from "gemini-oauth";
+import {
+  GeminiAuthStore,
+  GeminiUpstream,
+  startGeminiOAuthServer,
+} from "gemini-oauth";
 
-const auth = new GeminiAuthStore(); // ~/.gemini/oauth_creds.json
-const token = await auth.getAccessToken(); // auto-refresh
-const projectId = await auth.ensureProjectId();
+const auth = new GeminiAuthStore();
+const server = await startGeminiOAuthServer({
+  auth,
+  port: 10551,
+});
 
-const server = await startGeminiOAuthServer({ auth, port: 10551 });
 console.log(server.url);
 
-// 또는 직접 upstream 호출
 const upstream = new GeminiUpstream({ auth });
 const result = await upstream.chatCompletions({
   model: "gemini-2.5-flash",
-  messages: [{ role: "user", content: "hi" }],
+  messages: [{ role: "user", content: "Hello" }],
 });
+
+console.log(result);
 ```
 
----
+The package exports the auth store, server, upstream client, OAuth login helpers, daemon helpers, project resolution helpers, and TypeScript types. See src/index.ts for the complete export surface.
 
-## 동작 원리
+## Files and credential handling
 
-1. Gemini CLI는 Google OAuth(PKCE)로 로그인하고 access/refresh 토큰을 `~/.gemini/oauth_creds.json`에 저장합니다.
-2. 모델 추론은 공개 Gemini API 키가 아니라 **`https://daily-cloudcode-pa.googleapis.com/v1internal`** (Code Assist private API)를 사용합니다.
-3. `gemini-oauth`는 그 토큰을 읽어:
-   - `Authorization: Bearer …`
-   - Antigravity-compatible User-Agent / Client-Metadata
-   를 붙이고, OpenAI messages → Gemini `contents` 로 변환한 뒤 `:generateContent` / `:streamGenerateContent` 를 호출합니다.
-4. 응답은 다시 OpenAI `chat.completion` (또는 간단 `response`) 형식으로 변환합니다.
-5. 프로젝트 ID는 `loadCodeAssist` / `onboardUser`로 해석해 `~/.gemini/gemini-oauth.json`에 캐시합니다.
+| Path | Purpose |
+| --- | --- |
+| ~/.gemini/oauth_creds.json | Gemini CLI-compatible access and refresh tokens; written with restrictive 0600 permissions where supported. |
+| ~/.gemini/gemini-oauth.json | Local project ID, account email, and tier cache. |
+| ~/.gemini/oauth-proxy/state.json | Detached daemon state. |
+| ~/.gemini/oauth-proxy/server.pid | Detached daemon PID. |
+| ~/.gemini/oauth-proxy/server.log | Detached daemon log. |
 
----
+Treat OAuth credentials as passwords. Do not commit, paste, upload, log, share, or resell them. If a credential is exposed, revoke it through the relevant Google account tooling and sign in again.
 
-## 제한 사항
+gemini-oauth logout clears the configured file-based credential and local state. It does not clear an Antigravity OS-keychain session.
 
-- 계정에 허용된 **CLI / Code Assist 모델**만 동작합니다. API 키 전용 모델은 없을 수 있습니다.
-- 프록시는 **stateless**입니다. 대화 히스토리는 클라이언트가 매 요청에 넣어야 합니다.
-- `/v1/responses`는 non-stream만 지원합니다. 스트리밍은 `/v1/chat/completions`을 쓰세요.
-- 프록시 자체는 API key를 검사하지 않습니다. loopback 외 bind 시 네트워크 사용자가 사용자의 Google OAuth quota로 요청할 수 있으므로 기본 `127.0.0.1`을 유지하세요.
-- Google이 Code Assist 계약·엔드포인트를 바꾸면 일시적으로 깨질 수 있습니다. Gemini CLI를 최신으로 유지하세요.
-- **약관 리스크**: 구독 OAuth를 로컬 프록시로 재사용하는 것은 계정 정책과 충돌할 수 있습니다. 본인 계정·개인/내부 용도로만 사용하세요.
-
----
-
-## 개발 및 검증
+## Development and verification
 
 ```bash
 npm ci
 npm run typecheck
-npm test          # build + Node test runner
-npm run check     # typecheck + test
+npm test
+npm run check
 npm pack --dry-run
 ```
 
-자동 테스트는 요청 크기·입력 검증, OAuth state/error/token 처리, tool-call 변환, SSE fragmentation/cancellation, Responses stream 거절, IPv6 URL, CLI 옵션과 package bin 메타데이터를 다룹니다. 실제 계정 smoke test는 서버 실행 후 `examples/curl.sh`로 확인할 수 있습니다.
+npm test builds the project and runs the Node test suite. The tests cover request-size and input validation, OAuth state/error/token handling, project and auth behavior, tool-call conversion, SSE fragmentation and cancellation, Responses streaming rejection, IPv6 URLs, daemon safety, CLI options, and package metadata.
 
-Free-tier 프로젝트 해석과 `generateContent` 호출 모두 Antigravity-compatible metadata를 사용합니다. 이 private API와 metadata는 Google 변경에 따라 깨질 수 있습니다.
+For a live-account smoke test:
 
----
+```bash
+npm run build
+node dist/cli.js --detach
+./examples/curl.sh
+node dist/cli.js stop
+```
 
-## Legal
+The smoke test requires a valid account session and a model available to that account. Do not add real credentials or live responses to the repository.
 
-Unofficial, community-maintained. Not affiliated with, endorsed by, or sponsored by Google LLC / Antigravity.
+## Limitations and troubleshooting
 
-Treat Gemini credentials like passwords. Use only your own account. Comply with Google Terms of Use and applicable policies. Provided as-is with no warranties.
+### No credentials found
+
+Run gemini to sign in with the official CLI, or run gemini-oauth login. Check the selected path with:
+
+```bash
+gemini-oauth status
+```
+
+### Project resolution fails
+
+The account may require a user-defined GCP project, or the account/tier may not be eligible for Code Assist. Set GOOGLE_CLOUD_PROJECT or pass --project, then retry. The upstream private API can also change independently of this repository.
+
+### The port is already in use
+
+Use gemini-oauth status and gemini-oauth stop, or choose another port with --port. A foreground second instance requires --force and should normally use a different port.
+
+### Remote clients cannot connect
+
+The default host is intentionally 127.0.0.1. If remote access is genuinely required, use --host with --allow-remote and put a properly authenticated, encrypted reverse proxy or private network in front of it. gemini-oauth itself has no API-key or user authentication layer.
+
+## License and legal notes
+
+### This repository's license
+
+The original source code and documentation in this repository are released under the MIT License, copyright © 2026 gemini-oauth contributors. MIT permits use, copying, modification, distribution, sublicensing, and sale of the licensed project code, provided that the copyright and license notice are retained. The software is provided “as is”, without warranty.
+
+The MIT license applies to this repository's material only. It does not grant any right to:
+
+- use Google's names, logos, trademarks, or branding;
+- access or redistribute Google accounts, OAuth credentials, Code Assist quotas, or subscriptions;
+- treat the Code Assist private endpoint as a public or supported API;
+- bypass account, product, rate, safety, or regional restrictions; or
+- redistribute another person's credentials or model access.
+
+### Third-party service and account responsibility
+
+This tool interacts with Google OAuth, Gemini CLI / Code Assist services, and possibly Antigravity tooling. Those services have their own terms, acceptable-use rules, privacy policies, product limitations, and account policies, which can change over time. Review the current terms that apply to your account and region before using this proxy, especially if you plan to use a subscription or managed Code Assist entitlement through a third-party client.
+
+You are responsible for:
+
+- using your own authorized account and keeping its credentials private;
+- complying with Google's current terms, API/service policies, Gemini CLI / Code Assist rules, organizational policies, and applicable law;
+- understanding how prompts, files, images, tool inputs, and outputs are handled by the upstream service;
+- paying or monitoring any applicable quota or billing consequences; and
+- ensuring that your use and distribution of this software do not imply Google endorsement.
+
+Because the proxy uses a private upstream protocol and compatible client metadata, Google may change or restrict it at any time. This project makes no promise of continued access, model availability, quota, compatibility, or account safety. Use it only where you have confirmed that your use is permitted.
+
+## Disclaimer
+
+This is an unofficial, community-maintained project. It is provided as-is, without warranty or support. The maintainers are not responsible for account suspension, quota consumption, data loss, service changes, or any other consequence of using the software.
