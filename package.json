@@ -1,0 +1,63 @@
+{
+  "name": "agy-oauth",
+  "version": "0.1.0",
+  "description": "Turn your Gemini CLI (Code Assist OAuth) session into an OpenAI-compatible local API — the Gemini analogue of openai-oauth / grok-oauth.",
+  "type": "module",
+  "bin": {
+    "agy-oauth": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "examples"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "clean": "rm -rf dist *.tgz",
+    "start": "node dist/cli.js",
+    "dev": "node --experimental-strip-types src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
+    "pack:local": "npm pack",
+    "install:global": "npm run build && npm install -g .",
+    "uninstall:global": "npm uninstall -g agy-oauth"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "gemini",
+    "gemini-cli",
+    "google",
+    "oauth",
+    "code-assist",
+    "openai-compatible",
+    "proxy",
+    "cli",
+    "server",
+    "antigravity"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kimws/agy-oauth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kimws/agy-oauth/issues"
+  },
+  "homepage": "https://github.com/kimws/agy-oauth#readme",
+  "preferGlobal": true,
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  }
+}
