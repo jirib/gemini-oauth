@@ -61,6 +61,9 @@ test("CLI help lists --url and --logging-level options", () => {
   const result = runCli("--help");
   assert.equal(result.status, 0);
   assert.match(result.stdout, /--url <url>/);
+  assert.match(result.stdout, /--ide-type <type>/);
+  assert.match(result.stdout, /--user-project <id>/);
+  assert.match(result.stdout, /--user-agent <ua>/);
   assert.match(result.stdout, /--logging-level <lvl>/);
 });
 

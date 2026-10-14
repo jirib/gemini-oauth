@@ -44,6 +44,11 @@ export {
   CODE_ASSIST_PROD_ENDPOINT,
   CODE_ASSIST_PROD_BASE,
   normalizeBaseUrl,
+  clientMetadata,
+  coreClientMetadata,
+  userAgent,
+  antigravityUserAgent,
+  type IdeType,
   OAUTH_CLIENT_ID,
   DEFAULT_MODELS,
 } from "./constants.js";

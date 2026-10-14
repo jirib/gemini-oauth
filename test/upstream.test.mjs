@@ -179,3 +179,45 @@ test("parseLogLevel parses standard and alias log levels", () => {
   assert.equal(parseLogLevel("invalid"), null);
   assert.equal(parseLogLevel(123), null);
 });
+
+test("upstream sends x-goog-user-project and custom ideType and userAgent", async () => {
+  let capturedHeaders = null;
+  const mockFetch = async (_url, init) => {
+    capturedHeaders = init.headers;
+    return new Response(
+      JSON.stringify({
+        response: {
+          candidates: [
+            {
+              content: { role: "model", parts: [{ text: "headers ok" }] },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+  const mockAuth = {
+    ensureProjectId: async () => "my-gcp-project",
+    getAccessToken: async () => "test-token",
+  };
+  const upstream = new GeminiUpstream({
+    auth: mockAuth,
+    fetch: mockFetch,
+    ideType: "GEMINI_CLI",
+    userProject: "my-quota-project",
+    userAgent: "CustomUA/1.0",
+    logLevel: "silent",
+  });
+
+  await upstream.chatCompletions({
+    model: "gemini-2.5-flash",
+    messages: [{ role: "user", content: "hi" }],
+  });
+
+  assert.ok(capturedHeaders);
+  assert.equal(capturedHeaders["x-goog-user-project"], "my-quota-project");
+  assert.equal(capturedHeaders["User-Agent"], "CustomUA/1.0");
+  assert.match(capturedHeaders["Client-Metadata"], /ideType=GEMINI_CLI/);
+});

@@ -57,8 +57,16 @@ export function platformId(): string {
   return process.arch === "arm64" ? "LINUX_ARM64" : "LINUX_AMD64";
 }
 
+export type IdeType =
+  | "ANTIGRAVITY"
+  | "GEMINI_CLI"
+  | "VSCODE"
+  | "INTELLIJ"
+  | "IDE_UNSPECIFIED"
+  | string;
+
 export function clientMetadata(
-  ideType: "ANTIGRAVITY" | "IDE_UNSPECIFIED" = "ANTIGRAVITY",
+  ideType: IdeType = "ANTIGRAVITY",
 ): string {
   return `ideType=${ideType},platform=${platformId()},pluginType=GEMINI`;
 }
@@ -71,7 +79,7 @@ export const CODE_ASSIST_HEADERS = {
 } as const;
 
 export function coreClientMetadata(
-  ideType: "ANTIGRAVITY" | "IDE_UNSPECIFIED" = "ANTIGRAVITY",
+  ideType: IdeType = "ANTIGRAVITY",
 ): {
   ideType: string;
   platform: string;
@@ -118,6 +126,9 @@ export const REFRESH_SKEW_MS = 2 * 60 * 1000;
 
 /** Prefer installed Gemini CLI version for User-Agent. */
 export function resolveClientVersion(): string {
+  if (process.env.GEMINI_CLI_VERSION?.trim()) {
+    return process.env.GEMINI_CLI_VERSION.trim();
+  }
   try {
     const pkgPath = join(
       // node_modules/@google/gemini-cli/package.json when globally installed
@@ -139,7 +150,7 @@ export function resolveClientVersion(): string {
   } catch {
     // ignore
   }
-  return "0.49.0";
+  return "0.63.0";
 }
 
 /** Gemini CLI-compatible User-Agent used for OAuth token operations. */

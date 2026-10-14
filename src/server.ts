@@ -7,6 +7,7 @@ import {
   DEFAULT_PORT,
   PACKAGE_NAME,
   PACKAGE_VERSION,
+  type IdeType,
 } from "./constants.js";
 import type { GeminiAuthStore } from "./auth.js";
 import type { OpenAIChatRequest } from "./convert.js";
@@ -30,6 +31,9 @@ export type ServerOptions = {
   url?: string;
   endpoint?: string;
   baseUrl?: string;
+  ideType?: IdeType;
+  userProject?: string;
+  userAgent?: string;
   /** Logging level: debug, info, warn, error, silent. */
   logLevel?: LogLevel;
   /** Custom logger instance. */
@@ -345,6 +349,9 @@ export async function startGeminiOAuthServer(
     models: options.models,
     fetch: options.fetch,
     url: options.url ?? options.endpoint ?? options.baseUrl,
+    ideType: options.ideType,
+    userProject: options.userProject,
+    userAgent: options.userAgent,
     logLevel: options.logLevel,
     logger: logger.child("upstream"),
   });

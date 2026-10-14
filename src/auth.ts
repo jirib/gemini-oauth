@@ -15,6 +15,7 @@ import {
   OAUTH_CLIENT_SECRET,
   REFRESH_SKEW_MS,
   userAgent,
+  type IdeType,
 } from "./constants.js";
 import { resolveProject } from "./project.js";
 import {
@@ -66,6 +67,9 @@ export type AuthStoreOptions = {
   url?: string;
   endpoint?: string;
   baseUrl?: string;
+  ideType?: IdeType;
+  userProject?: string;
+  userAgent?: string;
   logLevel?: LogLevel;
   logger?: Logger;
 };
@@ -83,6 +87,9 @@ export class GeminiAuthStore {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly baseUrl?: string;
+  readonly ideType?: IdeType;
+  readonly userProject?: string;
+  readonly customUserAgent?: string;
   readonly logger: Logger;
   private projectIdOverride?: string;
   private readonly fetchImpl: typeof fetch;
@@ -180,6 +187,9 @@ export class GeminiAuthStore {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.useAntigravityKeyring = options.useAntigravityKeyring ?? true;
     this.baseUrl = options.baseUrl ?? options.url ?? options.endpoint;
+    this.ideType = options.ideType;
+    this.userProject = options.userProject;
+    this.customUserAgent = options.userAgent;
     this.logger =
       options.logger ??
       createLogger({ level: options.logLevel, prefix: "auth" });
@@ -487,6 +497,9 @@ export class GeminiAuthStore {
         process.env.GOOGLE_CLOUD_PROJECT_ID ||
         undefined,
       baseUrl: this.baseUrl,
+      ideType: this.ideType,
+      userProject: this.userProject,
+      userAgent: this.customUserAgent,
       logger: this.logger,
     });
     if (!result.ok) {

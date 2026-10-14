@@ -5,7 +5,9 @@ import {
   clientMetadata,
   methodUrl,
   antigravityUserAgent,
+  userAgent,
   normalizeBaseUrl,
+  type IdeType,
 } from "./constants.js";
 import type { GeminiAuthStore } from "./auth.js";
 import {
@@ -33,6 +35,9 @@ export type UpstreamOptions = {
   url?: string;
   endpoint?: string;
   baseUrl?: string;
+  ideType?: IdeType;
+  userProject?: string;
+  userAgent?: string;
   logLevel?: LogLevel;
   logger?: Logger;
 };
@@ -42,6 +47,9 @@ export class GeminiUpstream {
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
   private readonly logger: Logger;
+  private readonly ideType: IdeType;
+  private readonly userProject?: string;
+  private readonly customUserAgent?: string;
   private models: string[];
 
   constructor(options: UpstreamOptions) {
@@ -53,6 +61,9 @@ export class GeminiUpstream {
     this.logger =
       options.logger ??
       createLogger({ level: options.logLevel, prefix: "upstream" });
+    this.ideType = options.ideType ?? "ANTIGRAVITY";
+    this.userProject = options.userProject;
+    this.customUserAgent = options.userAgent;
     this.models = options.models?.length
       ? options.models
       : [...DEFAULT_MODELS];
@@ -74,16 +85,25 @@ export class GeminiUpstream {
   private async authHeaders(
     model: string,
     streaming: boolean,
+    projectId?: string,
   ): Promise<Record<string, string>> {
     const token = await this.auth.getAccessToken();
+    const effectiveUa =
+      this.customUserAgent ??
+      (this.ideType === "ANTIGRAVITY"
+        ? antigravityUserAgent()
+        : userAgent(model));
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": antigravityUserAgent(),
+      "User-Agent": effectiveUa,
       "x-activity-request-id": randomUUID(),
       "X-Goog-Api-Client": CODE_ASSIST_HEADERS["X-Goog-Api-Client"],
-      "Client-Metadata": clientMetadata("ANTIGRAVITY"),
+      "Client-Metadata": clientMetadata(this.ideType),
     };
+    if (this.userProject) {
+      headers["x-goog-user-project"] = this.userProject;
+    }
     if (streaming) {
       headers.Accept = "text/event-stream";
     } else {
@@ -143,7 +163,7 @@ export class GeminiUpstream {
       { ...openAiRequest, model },
       projectId,
     );
-    const headers = await this.authHeaders(model, streaming);
+    const headers = await this.authHeaders(model, streaming, projectId);
     const response = await this.doFetch(
       url,
       headers,

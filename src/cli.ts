@@ -12,6 +12,7 @@ import {
   PACKAGE_NAME,
   PACKAGE_VERSION,
   normalizeBaseUrl,
+  type IdeType,
 } from "./constants.js";
 import {
   parseLogLevel,
@@ -48,6 +49,9 @@ Serve options:
   --models <ids>         Comma-separated model allowlist
   --project <id>         Override GCP / Code Assist project id
   --url <url>            Upstream Code Assist endpoint URL (default: ${CODE_ASSIST_BASE})
+  --ide-type <type>      Client metadata IDE type (default: ANTIGRAVITY, e.g. GEMINI_CLI, VSCODE)
+  --user-project <id>    GCP quota project (x-goog-user-project, defaults to --project)
+  --user-agent <ua>      Custom User-Agent header override
   --logging-level <lvl>  Logging level: debug, info, warn, error, silent (default: info)
   --detach, -d           Run in background (daemon)
   --foreground           Force foreground (used by daemon child)
@@ -99,12 +103,18 @@ async function cmdAuthStatus(
   project?: string,
   url?: string,
   logLevel?: LogLevel,
+  ideType?: IdeType,
+  userProject?: string,
+  userAgent?: string,
 ): Promise<void> {
   const store = new GeminiAuthStore({
     authFilePath: authFile,
     projectId: project,
     url,
     logLevel,
+    ideType,
+    userProject,
+    userAgent,
   });
   if (!store.hasCredentials()) {
     print(`Auth: not signed in (${authFile})`);
@@ -119,6 +129,10 @@ async function cmdAuthStatus(
       print(`  auth_file:  ${authFile}`);
       print(`  token:      available`);
       print(`  upstream:   ${url ?? CODE_ASSIST_BASE}`);
+      if (ideType && ideType !== "ANTIGRAVITY")
+        print(`  ide_type:   ${ideType}`);
+      if (userProject)
+        print(`  user_project: ${userProject}`);
       try {
         const projectId = await store.ensureProjectId();
         print(`  project:    ${projectId}`);
@@ -138,6 +152,7 @@ async function cmdAuthStatus(
     print(`  pid:        ${daemon.pid}`);
     print(`  url:        ${daemon.url}`);
     if (daemon.upstreamUrl) print(`  upstream:   ${daemon.upstreamUrl}`);
+    if (daemon.ideType)     print(`  ide_type:   ${daemon.ideType}`);
     if (daemon.logLevel)    print(`  log_level:  ${daemon.logLevel}`);
     print(`  started_at: ${daemon.startedAt}`);
     print(`  log_file:   ${daemon.logFile}`);
@@ -155,12 +170,18 @@ async function cmdLogin(opts: {
   project?: string;
   url?: string;
   logLevel?: LogLevel;
+  ideType?: IdeType;
+  userProject?: string;
+  userAgent?: string;
 }): Promise<void> {
   const store = new GeminiAuthStore({
     authFilePath: opts.authFile,
     projectId: opts.project,
     url: opts.url,
     logLevel: opts.logLevel,
+    ideType: opts.ideType,
+    userProject: opts.userProject,
+    userAgent: opts.userAgent,
   });
   await login({
     store,
@@ -179,12 +200,14 @@ function printExistingServer(existing: {
   startedAt: string;
   upstreamUrl?: string;
   logLevel?: string;
+  ideType?: string;
 }): void {
   print(`Server already running (detached daemon)`);
   print(`  pid:        ${existing.pid}`);
   print(`  url:        ${existing.url}`);
   print(`  port:       ${existing.port}`);
   if (existing.upstreamUrl) print(`  upstream:   ${existing.upstreamUrl}`);
+  if (existing.ideType)     print(`  ide_type:   ${existing.ideType}`);
   if (existing.logLevel)    print(`  log_level:  ${existing.logLevel}`);
   print(`  started_at: ${existing.startedAt}`);
   print(`  log_file:   ${existing.logFile}`);
@@ -230,6 +253,9 @@ async function cmdServe(opts: {
   project?: string;
   url?: string;
   logLevel: LogLevel;
+  ideType?: IdeType;
+  userProject?: string;
+  userAgent?: string;
   detach: boolean;
   foreground: boolean;
   force: boolean;
@@ -283,6 +309,9 @@ async function cmdServe(opts: {
       projectId: opts.project,
       url: opts.url,
       logLevel: opts.logLevel,
+      ideType: opts.ideType,
+      userProject: opts.userProject,
+      userAgent: opts.userAgent,
     });
     if (!store.hasCredentials()) {
       print(`No credentials found. Run login first:\n  gemini-oauth login\n`);
@@ -298,6 +327,9 @@ async function cmdServe(opts: {
       authFile: opts.authFile,
       upstreamUrl: opts.url,
       logLevel: opts.logLevel,
+      ideType: opts.ideType,
+      userProject: opts.userProject,
+      userAgent: opts.userAgent,
     });
 
     const ready = await waitForDaemonReady(state);
@@ -316,6 +348,7 @@ async function cmdServe(opts: {
     print(`  url: ${state.url}`);
     print(`  port: ${state.port}`);
     if (state.upstreamUrl) print(`  upstream: ${state.upstreamUrl}`);
+    if (state.ideType)     print(`  ide_type: ${state.ideType}`);
     if (state.logLevel)    print(`  log_level: ${state.logLevel}`);
     print(`  log: ${state.logFile}`);
     print(``);
@@ -343,6 +376,9 @@ async function cmdServe(opts: {
     projectId: opts.project,
     url: opts.url,
     logLevel: opts.logLevel,
+    ideType: opts.ideType,
+    userProject: opts.userProject,
+    userAgent: opts.userAgent,
   });
   if (!store.hasCredentials()) {
     if (process.env.GEMINI_OAUTH_DAEMON === "1") {
@@ -362,6 +398,9 @@ async function cmdServe(opts: {
       auth: store,
       models: opts.models,
       url: opts.url,
+      ideType: opts.ideType,
+      userProject: opts.userProject,
+      userAgent: opts.userAgent,
       logLevel: opts.logLevel,
     });
   } catch (err) {
@@ -381,6 +420,12 @@ async function cmdServe(opts: {
     print(`  host:      ${running.host}`);
     print(`  port:      ${running.port}`);
     print(`  upstream:  ${running.upstreamUrl}`);
+    if (opts.ideType && opts.ideType !== "ANTIGRAVITY") {
+      print(`  ide_type:  ${opts.ideType}`);
+    }
+    if (opts.userProject) {
+      print(`  user_project: ${opts.userProject}`);
+    }
     print(`  log_level: ${opts.logLevel}`);
     if (!opts.portExplicit && running.port === DEFAULT_PORT) {
       print(
@@ -455,6 +500,9 @@ async function main(): Promise<void> {
       project: { type: "string" },
       url: { type: "string" },
       endpoint: { type: "string" },
+      "ide-type": { type: "string" },
+      "user-project": { type: "string" },
+      "user-agent": { type: "string" },
       "logging-level": { type: "string" },
       "log-level": { type: "string" },
       open: { type: "boolean", default: true },
@@ -529,6 +577,23 @@ async function main(): Promise<void> {
     }
   }
 
+  const rawIdeType =
+    values["ide-type"] ??
+    process.env.GEMINI_OAUTH_IDE_TYPE ??
+    process.env.CODE_ASSIST_IDE_TYPE;
+  const ideType = (rawIdeType?.trim() as IdeType) || undefined;
+
+  const rawUserProject =
+    values["user-project"] ??
+    process.env.GEMINI_OAUTH_USER_PROJECT;
+  const userProject = rawUserProject?.trim() || undefined;
+
+  const rawUserAgent =
+    values["user-agent"] ??
+    process.env.GEMINI_OAUTH_USER_AGENT ??
+    process.env.CODE_ASSIST_USER_AGENT;
+  const customUserAgent = rawUserAgent?.trim() || undefined;
+
   if (command === "help") {
     print(help);
     return;
@@ -552,6 +617,9 @@ async function main(): Promise<void> {
       project,
       url,
       logLevel,
+      ideType,
+      userProject,
+      userAgent: customUserAgent,
     });
     return;
   }
@@ -567,7 +635,15 @@ async function main(): Promise<void> {
   }
 
   if (command === "status") {
-    await cmdAuthStatus(authFile, project, url, logLevel);
+    await cmdAuthStatus(
+      authFile,
+      project,
+      url,
+      logLevel,
+      ideType,
+      userProject,
+      customUserAgent,
+    );
     return;
   }
 
@@ -605,6 +681,12 @@ async function main(): Promise<void> {
     if (values["allow-remote"]) rawServeArgs.push("--allow-remote");
     if (values.url) rawServeArgs.push("--url", values.url);
     else if (values.endpoint) rawServeArgs.push("--url", values.endpoint);
+    if (values["ide-type"])
+      rawServeArgs.push("--ide-type", values["ide-type"]);
+    if (values["user-project"])
+      rawServeArgs.push("--user-project", values["user-project"]);
+    if (values["user-agent"])
+      rawServeArgs.push("--user-agent", values["user-agent"]);
     if (values["logging-level"])
       rawServeArgs.push("--logging-level", values["logging-level"]);
     else if (values["log-level"])
@@ -623,6 +705,9 @@ async function main(): Promise<void> {
       project,
       url,
       logLevel,
+      ideType,
+      userProject,
+      userAgent: customUserAgent,
       detach: Boolean(values.detach),
       foreground: Boolean(values.foreground),
       force: Boolean(values.force),

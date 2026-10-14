@@ -161,6 +161,9 @@ gemini-oauth stop
 | --project <id> | 자동 | Code Assist / GCP project ID를 덮어씁니다. |
 | --models <ids> | 내장 allowlist | /v1/models에 반환할 모델 ID를 콤마로 구분합니다. |
 | --url <url> | https://daily-cloudcode-pa.googleapis.com/v1internal | Upstream Code Assist 엔드포인트 URL (예: 프로덕션 https://cloudcode-pa.googleapis.com/v1internal). |
+| --ide-type <type> | ANTIGRAVITY | Client metadata IDE 타입 (예: GEMINI_CLI, VSCODE, ANTIGRAVITY). 환경 변수: GEMINI_OAUTH_IDE_TYPE. |
+| --user-project <id> | 자동 | x-goog-user-project 헤더로 전송되는 GCP 할당량 프로젝트 (--project가 기본값). 환경 변수: GEMINI_OAUTH_USER_PROJECT. |
+| --user-agent <ua> | 자동 | 사용자 정의 User-Agent 헤더. 환경 변수: GEMINI_OAUTH_USER_AGENT. |
 | --logging-level <lvl> | info | 로그 레벨: debug, info, warn, error, silent. |
 | --detach, -d | off | 백그라운드 daemon으로 시작합니다. |
 | --device | off | headless 로그인 방식을 사용합니다. |
@@ -188,6 +191,30 @@ gemini-oauth --project my-gcp-project --detach
 ```
 
 해당 project는 로그인한 계정과 관련 Google 서비스 정책에서 유효해야 합니다.
+
+### 기업용 / Enterprise Code Assist
+
+라이선스가 할당된 Google Cloud 프로젝트에 연결된 기업용 Code Assist 구독의 경우, 프로덕션 엔드포인트와 공식 Gemini CLI 클라이언트 ID를 지정해야 합니다:
+
+```bash
+gemini-oauth \
+  --url https://cloudcode-pa.googleapis.com/v1internal \
+  --project your-gcp-project-id \
+  --ide-type GEMINI_CLI \
+  --detach
+```
+
+또는 환경 변수를 통해 지속적으로 설정할 수 있습니다:
+
+```bash
+export CODE_ASSIST_URL=https://cloudcode-pa.googleapis.com/v1internal
+export GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+export GEMINI_OAUTH_IDE_TYPE=GEMINI_CLI
+
+gemini-oauth --detach
+```
+
+사용자 계정이 해당 GCP 프로젝트에 `roles/cloudaicompanion.user` IAM 역할을 가지고 있고 활성 Gemini Code Assist 라이선스가 할당되어 있는지 확인하세요.
 
 ## API 호환 범위
 
