@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { GeminiAuthStore } from "../dist/auth.js";
 import { startGeminiOAuthServer } from "../dist/server.js";
-import { CODE_ASSIST_PROD_BASE } from "../dist/index.js";
+import { createLogger, CODE_ASSIST_PROD_BASE } from "../dist/index.js";
 
 const makeServer = async (options = {}) => {
   const directory = await mkdtemp(join(tmpdir(), "gemini-oauth-test-"));
@@ -126,6 +126,7 @@ test("IPv6 server URLs use brackets", async (t) => {
 test("server uses configured production Code Assist url", async () => {
   const { server, cleanup } = await makeServer({
     url: CODE_ASSIST_PROD_BASE,
+    logLevel: "silent",
   });
   try {
     const health = await fetch(`${server.url.replace(/\/v1$/, "")}/health`);
@@ -139,5 +140,39 @@ test("server uses configured production Code Assist url", async () => {
     );
   } finally {
     await cleanup();
+  }
+});
+
+test("server logger captures requests at info level and respects silent level", async () => {
+  const logs = [];
+  const writer = (level, line) => {
+    logs.push({ level, line });
+  };
+  const logger = createLogger({ level: "info", writer });
+
+  const { server, cleanup } = await makeServer({ logger });
+  try {
+    const modelsRes = await fetch(`${server.url}/models`);
+    assert.equal(modelsRes.status, 200);
+
+    const infoLogs = logs.filter((l) => l.level === "info");
+    assert.ok(infoLogs.length >= 1);
+    assert.ok(infoLogs.some((l) => l.line.includes("GET /v1/models 200")));
+  } finally {
+    await cleanup();
+  }
+
+  // Silent mode emits no logs
+  const silentLogs = [];
+  const silentLogger = createLogger({
+    level: "silent",
+    writer: (level, line) => silentLogs.push({ level, line }),
+  });
+  const silentFixture = await makeServer({ logger: silentLogger });
+  try {
+    await fetch(`${silentFixture.server.url}/models`);
+    assert.equal(silentLogs.length, 0);
+  } finally {
+    await silentFixture.cleanup();
   }
 });

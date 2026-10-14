@@ -49,10 +49,19 @@ test("CLI rejects invalid URLs", () => {
   }
 });
 
-test("CLI help lists --url option", () => {
+test("CLI rejects invalid logging levels", () => {
+  for (const value of ["verbose", "super-debug", "123"]) {
+    const result = runCli("--logging-level", value);
+    assert.equal(result.status, 1, value);
+    assert.match(result.stderr, /Invalid --logging-level/, value);
+  }
+});
+
+test("CLI help lists --url and --logging-level options", () => {
   const result = runCli("--help");
   assert.equal(result.status, 0);
   assert.match(result.stdout, /--url <url>/);
+  assert.match(result.stdout, /--logging-level <lvl>/);
 });
 
 test("package bin metadata uses a publish-safe relative path", () => {

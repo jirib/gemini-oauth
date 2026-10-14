@@ -22,6 +22,7 @@ export type DaemonState = {
   cliEntry?: string;
   processStartMarker?: string;
   upstreamUrl?: string;
+  logLevel?: string;
 };
 
 export const DAEMON_HOME = join(homedir(), ".gemini", "oauth-proxy");
@@ -153,6 +154,7 @@ export function spawnDetachedServer(opts: {
   authFile?: string;
   logFile?: string;
   upstreamUrl?: string;
+  logLevel?: string;
 }): DaemonState {
   ensureDaemonHome();
   let lockFd: number | undefined;
@@ -230,6 +232,7 @@ export function spawnDetachedServer(opts: {
       cliEntry: opts.cliEntry,
       processStartMarker: readProcessField(child.pid, "lstart") ?? undefined,
       upstreamUrl: opts.upstreamUrl,
+      logLevel: opts.logLevel,
     };
     try {
       writeDaemonState(state);

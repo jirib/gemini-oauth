@@ -161,6 +161,7 @@ gemini-oauth stop
 | --project <id> | 자동 | Code Assist / GCP project ID를 덮어씁니다. |
 | --models <ids> | 내장 allowlist | /v1/models에 반환할 모델 ID를 콤마로 구분합니다. |
 | --url <url> | https://daily-cloudcode-pa.googleapis.com/v1internal | Upstream Code Assist 엔드포인트 URL (예: 프로덕션 https://cloudcode-pa.googleapis.com/v1internal). |
+| --logging-level <lvl> | info | 로그 레벨: debug, info, warn, error, silent. |
 | --detach, -d | off | 백그라운드 daemon으로 시작합니다. |
 | --device | off | headless 로그인 방식을 사용합니다. |
 | --no-open | off | 로그인 시 브라우저를 자동으로 열지 않고 URL만 출력합니다. |

@@ -9,6 +9,11 @@ import {
 } from "./constants.js";
 import type { GeminiAuthStore } from "./auth.js";
 import {
+  createLogger,
+  type Logger,
+  type LogLevel,
+} from "./logger.js";
+import {
   buildCodeAssistBody,
   chatCompletionToResponses,
   geminiChunkToOpenAI,
@@ -28,12 +33,15 @@ export type UpstreamOptions = {
   url?: string;
   endpoint?: string;
   baseUrl?: string;
+  logLevel?: LogLevel;
+  logger?: Logger;
 };
 
 export class GeminiUpstream {
   private readonly auth: GeminiAuthStore;
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
+  private readonly logger: Logger;
   private models: string[];
 
   constructor(options: UpstreamOptions) {
@@ -42,6 +50,9 @@ export class GeminiUpstream {
     this.baseUrl = normalizeBaseUrl(
       options.baseUrl ?? options.url ?? options.endpoint,
     );
+    this.logger =
+      options.logger ??
+      createLogger({ level: options.logLevel, prefix: "upstream" });
     this.models = options.models?.length
       ? options.models
       : [...DEFAULT_MODELS];
@@ -88,6 +99,7 @@ export class GeminiUpstream {
   ): Promise<Response> {
     const run = async (forceRefresh = false): Promise<Response> => {
       if (forceRefresh) {
+        this.logger.debug("Forcing token refresh for 401 retry");
         await this.auth.getAccessToken({ forceRefresh: true });
         headers.Authorization = `Bearer ${await this.auth.getAccessToken()}`;
       }
@@ -124,6 +136,9 @@ export class GeminiUpstream {
       streaming,
       this.baseUrl,
     );
+    this.logger.debug(
+      `Upstream request POST ${url} (model: ${model}, stream: ${streaming})`,
+    );
     const envelope = buildCodeAssistBody(
       { ...openAiRequest, model },
       projectId,
@@ -137,6 +152,9 @@ export class GeminiUpstream {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
+      this.logger.error(
+        `Upstream error (${response.status}) from ${url}: ${errText.slice(0, 400)}`,
+      );
       return {
         kind: "error",
         status: response.status,

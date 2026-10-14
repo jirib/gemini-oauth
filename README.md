@@ -161,6 +161,7 @@ The default base URL is http://127.0.0.1:10551/v1. A custom port changes the bas
 | --project <id> | automatic | Override the Code Assist / GCP project ID. |
 | --models <ids> | built-in allowlist | Comma-separated model IDs returned by /v1/models. |
 | --url <url> | https://daily-cloudcode-pa.googleapis.com/v1internal | Upstream Code Assist endpoint URL (e.g. production https://cloudcode-pa.googleapis.com/v1internal). |
+| --logging-level <lvl> | info | Logging level: debug, info, warn, error, silent. |
 | --detach, -d | off | Start a background daemon. |
 | --device | off | Use the headless login flow. |
 | --no-open | off | Do not open a browser during login. |

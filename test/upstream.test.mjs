@@ -3,8 +3,9 @@ import test from "node:test";
 import {
   GeminiUpstream,
   createOpenAIStreamFromGemini,
-} from "../dist/upstream.js";
-import { normalizeBaseUrl } from "../dist/index.js";
+  normalizeBaseUrl,
+  parseLogLevel,
+} from "../dist/index.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -118,6 +119,7 @@ test("upstream dispatches to configured custom url", async () => {
     auth: mockAuth,
     fetch: mockFetch,
     url: "https://cloudcode-pa.googleapis.com/v1internal",
+    logLevel: "silent",
   });
 
   assert.equal(
@@ -162,4 +164,18 @@ test("normalizeBaseUrl handles various URL formats", () => {
     normalizeBaseUrl(),
     "https://daily-cloudcode-pa.googleapis.com/v1internal",
   );
+});
+
+test("parseLogLevel parses standard and alias log levels", () => {
+  assert.equal(parseLogLevel("debug"), "debug");
+  assert.equal(parseLogLevel("DEBUG"), "debug");
+  assert.equal(parseLogLevel("info"), "info");
+  assert.equal(parseLogLevel("warn"), "warn");
+  assert.equal(parseLogLevel("warning"), "warn");
+  assert.equal(parseLogLevel("error"), "error");
+  assert.equal(parseLogLevel("silent"), "silent");
+  assert.equal(parseLogLevel("off"), "silent");
+  assert.equal(parseLogLevel("none"), "silent");
+  assert.equal(parseLogLevel("invalid"), null);
+  assert.equal(parseLogLevel(123), null);
 });

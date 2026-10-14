@@ -8,6 +8,7 @@ import {
   coreClientMetadata,
   methodUrl,
 } from "./constants.js";
+import type { Logger } from "./logger.js";
 
 export type LoadCodeAssistPayload = {
   cloudaicompanionProject?: string | { id?: string; name?: string };
@@ -43,6 +44,7 @@ export type ResolveProjectOptions = {
   baseUrl?: string;
   url?: string;
   endpoint?: string;
+  logger?: Logger;
 };
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +81,9 @@ export async function loadCodeAssist(
     duetProject: projectHint,
   };
   try {
-    const response = await fetchImpl(methodUrl("loadCodeAssist", false, baseUrl), {
+    const targetUrl = methodUrl("loadCodeAssist", false, baseUrl);
+    options.logger?.debug(`loadCodeAssist requesting ${targetUrl}`);
+    const response = await fetchImpl(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -124,6 +128,7 @@ export async function onboardUser(
       duetProject: projectHint,
     };
     const targetUrl = methodUrl("onboardUser", false, baseUrl);
+    options.logger?.debug(`onboardUser requesting ${targetUrl}`);
     const response = await fetchImpl(targetUrl, {
       method: "POST",
       headers: {
